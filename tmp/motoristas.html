@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="pt-BR"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Cadastro de Motoristas - Golden Transportes</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          "primary": "#f5a524",
+          "background-light": "#f8f7f5",
+          "background-dark": "#221b10",
+        },
+        fontFamily: {
+          "display": ["Inter", "sans-serif"]
+        },
+        borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+      },
+    },
+  }
+</script>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen">
+<div class="relative flex h-auto min-h-screen w-full flex-col overflow-x-hidden">
+<div class="layout-container flex h-full grow flex-col">
+<div class="px-4 md:px-10 lg:px-40 flex flex-1 justify-center py-5">
+<div class="layout-content-container flex flex-col w-full max-w-[1200px] flex-1">
+<header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-primary/20 px-4 md:px-10 py-3 mb-6">
+<div class="flex items-center gap-8">
+<div class="flex items-center gap-4 text-primary">
+<div class="size-6">
+<span class="material-symbols-outlined text-[24px]">local_shipping</span>
+</div>
+<h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold leading-tight tracking-[-0.015em]">Golden Transportes</h2>
+</div>
+<nav class="hidden md:flex items-center gap-9">
+<a class="text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-primary transition-colors text-sm font-medium leading-normal" href="#">Dashboard</a>
+<a class="text-primary text-sm font-medium leading-normal border-b-2 border-primary pb-1" href="#">Motoristas</a>
+<a class="text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-primary transition-colors text-sm font-medium leading-normal" href="#">Veículos</a>
+<a class="text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-primary transition-colors text-sm font-medium leading-normal" href="#">Relatórios</a>
+</nav>
+</div>
+<div class="flex flex-1 justify-end gap-6 items-center">
+<label class="flex flex-col min-w-40 !h-10 max-w-64 hidden sm:flex">
+<div class="flex w-full flex-1 items-stretch rounded-lg h-full border border-primary/20 bg-background-light dark:bg-background-dark/50">
+<div class="text-slate-500 dark:text-slate-400 flex border-none items-center justify-center pl-4 rounded-l-lg border-r-0">
+<span class="material-symbols-outlined text-[20px]">search</span>
+</div>
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 dark:text-slate-100 focus:outline-0 focus:ring-0 border-none bg-transparent h-full placeholder:text-slate-500 dark:placeholder:text-slate-400 px-4 rounded-l-none border-l-0 pl-2 text-sm font-normal leading-normal" placeholder="Buscar..." type="text"/>
+</div>
+</label>
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 border-2 border-primary" data-alt="User profile avatar" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDK2iYtd7PrUjDBgfxhXYgqiSZwkZFCMsk7nx41TmrR0FSoqD1hT1Lxs52H3BBObrrrP14xmTccJT2miPvjJfHejrnSLSbhgipqaNumVdBSaeDRYSy9eC_XJ1fuAvOAEQ4LVTT3KmSGYOgQZ-spZqTXMw4rC1MidGUvFXVGEUs854sIIzxIL5ah49ltzLdCv_cLwb5KC5vvd6pfANjGdu0UK3yKMIG9KtlueM-A-PmNCmWh-ttHM8qpVsLc7BYy9XQWEBShsz11cA");'></div>
+</div>
+</header>
+<div class="flex flex-wrap justify-between gap-3 px-4 mb-6">
+<div class="flex flex-col gap-2">
+<h1 class="text-slate-900 dark:text-slate-100 tracking-tight text-[28px] md:text-[32px] font-bold leading-tight">Gestão de Motoristas</h1>
+<p class="text-slate-500 dark:text-slate-400 text-sm font-normal leading-normal">Cadastre novos motoristas ou gerencie sua frota atual.</p>
+</div>
+<div class="flex items-end">
+<button class="bg-primary hover:bg-primary/90 text-background-dark font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors">
+<span class="material-symbols-outlined text-[20px]">download</span>
+Exportar Lista
+</button>
+</div>
+</div>
+<div class="flex flex-col lg:flex-row gap-8 px-4">
+<!-- Left Column: Form -->
+<div class="w-full lg:w-1/3 flex flex-col gap-6">
+<div class="bg-white dark:bg-background-dark/80 border border-primary/20 rounded-xl p-6 shadow-lg">
+<h2 class="text-slate-900 dark:text-slate-100 text-[20px] font-bold leading-tight mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">person_add</span>
+Novo Cadastro
+</h2>
+<form class="flex flex-col gap-5">
+<!-- Photo Upload -->
+<div class="flex justify-center mb-2">
+<div class="relative group cursor-pointer">
+<div class="size-24 rounded-full border-2 border-dashed border-primary/50 flex flex-col items-center justify-center bg-primary/5 hover:bg-primary/10 transition-colors">
+<span class="material-symbols-outlined text-primary text-[32px]">add_a_photo</span>
+<span class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Foto</span>
+</div>
+</div>
+</div>
+<!-- Personal Info -->
+<div class="flex flex-col gap-4">
+<label class="flex flex-col w-full">
+<span class="text-slate-700 dark:text-slate-300 text-sm font-medium mb-1">Nome Completo</span>
+<input class="form-input w-full rounded-lg text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-primary border border-primary/20 bg-background-light dark:bg-background-dark/50 h-11 placeholder:text-slate-400 dark:placeholder:text-slate-500 px-3 text-sm transition-colors" placeholder="Ex: João da Silva" type="text"/>
+</label>
+<div class="flex gap-4">
+<label class="flex flex-col w-1/2">
+<span class="text-slate-700 dark:text-slate-300 text-sm font-medium mb-1">CPF</span>
+<input class="form-input w-full rounded-lg text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-primary border border-primary/20 bg-background-light dark:bg-background-dark/50 h-11 placeholder:text-slate-400 dark:placeholder:text-slate-500 px-3 text-sm transition-colors" placeholder="000.000.000-00" type="text"/>
+</label>
+<label class="flex flex-col w-1/2">
+<span class="text-slate-700 dark:text-slate-300 text-sm font-medium mb-1">Telefone</span>
+<input class="form-input w-full rounded-lg text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-primary border border-primary/20 bg-background-light dark:bg-background-dark/50 h-11 placeholder:text-slate-400 dark:placeholder:text-slate-500 px-3 text-sm transition-colors" placeholder="(00) 00000-0000" type="text"/>
+</label>
+</div>
+<label class="flex flex-col w-full">
+<span class="text-slate-700 dark:text-slate-300 text-sm font-medium mb-1">CNH</span>
+<input class="form-input w-full rounded-lg text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-primary border border-primary/20 bg-background-light dark:bg-background-dark/50 h-11 placeholder:text-slate-400 dark:placeholder:text-slate-500 px-3 text-sm transition-colors" placeholder="Número da CNH" type="text"/>
+</label>
+</div>
+<div class="w-full h-px bg-primary/20 my-2"></div>
+<!-- Professional Info -->
+<div class="flex flex-col gap-4">
+<div class="flex flex-col gap-2">
+<span class="text-slate-700 dark:text-slate-300 text-sm font-medium">Vínculo</span>
+<div class="flex gap-4">
+<label class="flex items-center gap-2 cursor-pointer">
+<input checked="" class="form-radio text-primary focus:ring-primary bg-background-light dark:bg-background-dark border-primary/40 size-4" name="vinculo" type="radio" value="propria"/>
+<span class="text-sm text-slate-700 dark:text-slate-300">Frota Própria</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer">
+<input class="form-radio text-primary focus:ring-primary bg-background-light dark:bg-background-dark border-primary/40 size-4" name="vinculo" type="radio" value="terceiro"/>
+<span class="text-sm text-slate-700 dark:text-slate-300">Terceirizado</span>
+</label>
+</div>
+</div>
+<div class="flex gap-4">
+<label class="flex flex-col w-1/2">
+<span class="text-slate-700 dark:text-slate-300 text-sm font-medium mb-1">Placa Cavalo</span>
+<input class="form-input w-full rounded-lg text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-primary border border-primary/20 bg-background-light dark:bg-background-dark/50 h-11 placeholder:text-slate-400 dark:placeholder:text-slate-500 px-3 text-sm uppercase transition-colors" placeholder="ABC-1234" type="text"/>
+</label>
+<label class="flex flex-col w-1/2">
+<span class="text-slate-700 dark:text-slate-300 text-sm font-medium mb-1">Placa Carreta</span>
+<input class="form-input w-full rounded-lg text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-primary border border-primary/20 bg-background-light dark:bg-background-dark/50 h-11 placeholder:text-slate-400 dark:placeholder:text-slate-500 px-3 text-sm uppercase transition-colors" placeholder="XYZ-9876" type="text"/>
+</label>
+</div>
+</div>
+<button class="w-full bg-primary hover:bg-primary/90 text-background-dark font-bold py-3 px-4 rounded-lg mt-4 shadow-[0_0_15px_rgba(245,165,36,0.3)] transition-all flex justify-center items-center gap-2" type="button">
+<span class="material-symbols-outlined">save</span>
+Cadastrar Motorista
+</button>
+</form>
+</div>
+</div>
+<!-- Right Column: Grid -->
+<div class="w-full lg:w-2/3 flex flex-col gap-4">
+<div class="flex justify-between items-center mb-2">
+<h3 class="text-slate-900 dark:text-slate-100 text-lg font-bold">Motoristas Cadastrados</h3>
+<div class="flex gap-2">
+<button class="p-2 rounded-lg bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-colors">
+<span class="material-symbols-outlined text-[20px]">filter_list</span>
+</button>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<!-- Card 1 -->
+<div class="bg-white dark:bg-background-dark/80 border border-primary/20 rounded-xl p-5 shadow-md hover:border-primary/50 transition-colors group">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center gap-3">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-12 border-2 border-primary shadow-[0_0_10px_rgba(245,165,36,0.2)]" data-alt="Driver Carlos Silva avatar" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBntqRsPvWH8Mnqt7tDnX8joAQNR4w8_1m2vffE3A-NORjhCLTsrVoV4n4FnIeO6CehisrLofhIjdM6gCtJoHlbiGxwid_4zuyn5MiEJGc0LI1jW7_SyHBan0yg8LryuMeuwUeke9byPS3BWdKMMSvJmFVAwpDCRmUu75z4LvRt_gohZZ8XN2EQNUhKrofX6zyHib98O78xQBXZfhehLU_7XGlN6nmDjPNtLfQqLZzDXUYOVTdtm4ERJ22q04y72y_L4KUNQuK0oA");'></div>
+<div>
+<h4 class="text-slate-900 dark:text-slate-100 font-bold text-base">Carlos Roberto Silva</h4>
+<p class="text-slate-500 dark:text-slate-400 text-xs">CPF: ***.456.789-**</p>
+</div>
+</div>
+<span class="px-2 py-1 rounded-md bg-green-500/10 text-green-600 dark:text-green-400 text-xs font-semibold border border-green-500/20">Ativo</span>
+</div>
+<div class="grid grid-cols-2 gap-2 mb-4 text-sm">
+<div class="bg-background-light dark:bg-background-dark/50 p-2 rounded border border-primary/10">
+<span class="text-slate-500 dark:text-slate-400 text-xs block mb-1">Veículo</span>
+<div class="flex items-center gap-1 text-slate-800 dark:text-slate-200 font-medium">
+<span class="material-symbols-outlined text-[14px] text-primary">directions_car</span>
+ABC-1234
+</div>
+</div>
+<div class="bg-background-light dark:bg-background-dark/50 p-2 rounded border border-primary/10">
+<span class="text-slate-500 dark:text-slate-400 text-xs block mb-1">Carreta</span>
+<div class="flex items-center gap-1 text-slate-800 dark:text-slate-200 font-medium">
+<span class="material-symbols-outlined text-[14px] text-primary">rv_hookup</span>
+XYZ-9876
+</div>
+</div>
+</div>
+<div class="flex justify-end gap-2 border-t border-primary/10 pt-3 opacity-80 group-hover:opacity-100 transition-opacity">
+<button class="p-1.5 text-slate-500 hover:text-primary dark:text-slate-400 dark:hover:text-primary transition-colors tooltip-trigger" title="Detalhes">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</button>
+<button class="p-1.5 text-slate-500 hover:text-primary dark:text-slate-400 dark:hover:text-primary transition-colors tooltip-trigger" title="Editar">
+<span class="material-symbols-outlined text-[20px]">edit</span>
+</button>
+<button class="p-1.5 text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 transition-colors tooltip-trigger" title="Desativar">
+<span class="material-symbols-outlined text-[20px]">block</span>
+</button>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-white dark:bg-background-dark/80 border border-primary/20 rounded-xl p-5 shadow-md hover:border-primary/50 transition-colors group">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center gap-3">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-12 border-2 border-primary shadow-[0_0_10px_rgba(245,165,36,0.2)]" data-alt="Driver Marcos Santos avatar" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDTmhuzFpWxHFPeBfgWVynhaMzURM1LXqF7b2T1OggawaKFae4ngtAjAbheV0aIpRCIb-Nkey9eRKuamxieMivgWc4TybLHlJLoc8ryVsr43M5DiJt93Xis7PM8btGK5QuO3J_a_JmsAXevoKwIa8Kcittw7e5jJFIFViMB2Rp3uC8I9qPBGoIKlcxee2ef0I4QECR2EVMYe8B9MEFuZsKNqBtbIVynyd7HfCsVbP25WcjqOq48bF9jqcqL0kuuTfdwFS_aoI5KEw");'></div>
+<div>
+<h4 class="text-slate-900 dark:text-slate-100 font-bold text-base">Marcos Oliveira Santos</h4>
+<p class="text-slate-500 dark:text-slate-400 text-xs">CPF: ***.123.456-**</p>
+</div>
+</div>
+<span class="px-2 py-1 rounded-md bg-green-500/10 text-green-600 dark:text-green-400 text-xs font-semibold border border-green-500/20">Ativo</span>
+</div>
+<div class="grid grid-cols-2 gap-2 mb-4 text-sm">
+<div class="bg-background-light dark:bg-background-dark/50 p-2 rounded border border-primary/10">
+<span class="text-slate-500 dark:text-slate-400 text-xs block mb-1">Veículo</span>
+<div class="flex items-center gap-1 text-slate-800 dark:text-slate-200 font-medium">
+<span class="material-symbols-outlined text-[14px] text-primary">directions_car</span>
+DEF-5678
+</div>
+</div>
+<div class="bg-background-light dark:bg-background-dark/50 p-2 rounded border border-primary/10">
+<span class="text-slate-500 dark:text-slate-400 text-xs block mb-1">Carreta</span>
+<div class="flex items-center gap-1 text-slate-800 dark:text-slate-200 font-medium">
+<span class="material-symbols-outlined text-[14px] text-primary">rv_hookup</span>
+UVW-6543
+</div>
+</div>
+</div>
+<div class="flex justify-end gap-2 border-t border-primary/10 pt-3 opacity-80 group-hover:opacity-100 transition-opacity">
+<button class="p-1.5 text-slate-500 hover:text-primary dark:text-slate-400 dark:hover:text-primary transition-colors tooltip-trigger" title="Detalhes">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</button>
+<button class="p-1.5 text-slate-500 hover:text-primary dark:text-slate-400 dark:hover:text-primary transition-colors tooltip-trigger" title="Editar">
+<span class="material-symbols-outlined text-[20px]">edit</span>
+</button>
+<button class="p-1.5 text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 transition-colors tooltip-trigger" title="Desativar">
+<span class="material-symbols-outlined text-[20px]">block</span>
+</button>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="bg-white dark:bg-background-dark/80 border border-primary/20 rounded-xl p-5 shadow-md hover:border-primary/50 transition-colors group opacity-75">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center gap-3">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-12 border-2 border-slate-400 dark:border-slate-600 grayscale" data-alt="Driver Antonio Costa avatar" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuAd8D3leoreD1PO5ViV9-0Ix9xqV_sQLIguCqv0UUg70ZfAtt-KnFM2cCbHUsSY771Ra_6WuuRXtU8LTQyBrmv4jdE2vEwce0fruvD_7knHl1eenzZSNh1V9PRWfs2txNgwaFElZaAFQyGX_5vEOF5We0xjGJ2pq0I_rfkr3XPQ9DCF1En1hnweq0o_Jur9cbVffyfDROzCYNBWXqw1lkLOhq1EIyEuJYF1egvlCoVJ7y7AKewj67MqFPwB0YOvWrefGq8-yM9XGA");'></div>
+<div>
+<h4 class="text-slate-900 dark:text-slate-100 font-bold text-base">Antonio Mendes Costa</h4>
+<p class="text-slate-500 dark:text-slate-400 text-xs">CPF: ***.987.654-**</p>
+</div>
+</div>
+<span class="px-2 py-1 rounded-md bg-slate-500/10 text-slate-600 dark:text-slate-400 text-xs font-semibold border border-slate-500/20">Inativo</span>
+</div>
+<div class="grid grid-cols-2 gap-2 mb-4 text-sm">
+<div class="bg-background-light dark:bg-background-dark/50 p-2 rounded border border-primary/10">
+<span class="text-slate-500 dark:text-slate-400 text-xs block mb-1">Veículo</span>
+<div class="flex items-center gap-1 text-slate-500 dark:text-slate-400 font-medium">
+<span class="material-symbols-outlined text-[14px]">directions_car</span>
+N/A
+</div>
+</div>
+<div class="bg-background-light dark:bg-background-dark/50 p-2 rounded border border-primary/10">
+<span class="text-slate-500 dark:text-slate-400 text-xs block mb-1">Carreta</span>
+<div class="flex items-center gap-1 text-slate-500 dark:text-slate-400 font-medium">
+<span class="material-symbols-outlined text-[14px]">rv_hookup</span>
+N/A
+</div>
+</div>
+</div>
+<div class="flex justify-end gap-2 border-t border-primary/10 pt-3 opacity-80 group-hover:opacity-100 transition-opacity">
+<button class="p-1.5 text-slate-500 hover:text-primary dark:text-slate-400 dark:hover:text-primary transition-colors tooltip-trigger" title="Detalhes">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</button>
+<button class="p-1.5 text-slate-500 hover:text-primary dark:text-slate-400 dark:hover:text-primary transition-colors tooltip-trigger" title="Editar">
+<span class="material-symbols-outlined text-[20px]">edit</span>
+</button>
+<button class="p-1.5 text-slate-500 hover:text-green-500 dark:text-slate-400 dark:hover:text-green-400 transition-colors tooltip-trigger" title="Reativar">
+<span class="material-symbols-outlined text-[20px]">check_circle</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Pagination (Simplified) -->
+<div class="flex justify-center mt-6">
+<div class="flex gap-2">
+<button class="w-8 h-8 flex items-center justify-center rounded-lg border border-primary/20 text-slate-500 dark:text-slate-400 hover:bg-primary/10 hover:text-primary transition-colors disabled:opacity-50">
+<span class="material-symbols-outlined text-[18px]">chevron_left</span>
+</button>
+<button class="w-8 h-8 flex items-center justify-center rounded-lg bg-primary text-background-dark font-medium">1</button>
+<button class="w-8 h-8 flex items-center justify-center rounded-lg border border-primary/20 text-slate-500 dark:text-slate-400 hover:bg-primary/10 hover:text-primary transition-colors">2</button>
+<button class="w-8 h-8 flex items-center justify-center rounded-lg border border-primary/20 text-slate-500 dark:text-slate-400 hover:bg-primary/10 hover:text-primary transition-colors">3</button>
+<button class="w-8 h-8 flex items-center justify-center rounded-lg border border-primary/20 text-slate-500 dark:text-slate-400 hover:bg-primary/10 hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[18px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</body></html>

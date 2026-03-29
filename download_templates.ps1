@@ -1,0 +1,8 @@
+$baseUrl = "c:\Users\pedro\Downloads\Aplicativo de Gestão de Frota\tmp"
+New-Item -ItemType Directory -Force -Path $baseUrl
+
+curl.exe -L "https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ6Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpZCiVodG1sXzcxODc3YjQ5NTk5NTRkMTI5ZDc2ZTQ5Y2ViMDQzOWYyEgoSBhD4k5m3CxgBkgEjCgpwcm9qZWN0X2lkEhVCEzIyNTA1NzQwNTIyMDQ4Njk4ODU&filename=&opi=89354086" -o "$baseUrl\cargas.html"
+curl.exe -L "https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ6Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpZCiVodG1sX2RlZDI2MDIxMWEzMzRmNmQ4MTRmZmFiNTI1N2YxMGNmEgoSBhD4k5m3CxgBkgEjCgpwcm9qZWN0X2lkEhVCEzIyNTA1NzQwNTIyMDQ4Njk4ODU&filename=&opi=89354086" -o "$baseUrl\relatorios.html"
+curl.exe -L "https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ6Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpZCiVodG1sXzExZmU0OGNlOGNkYzQzODg4MGVkNjdiYjI0ZTgyZGIxEgoSBhD4k5m3CxgBkgEjCgpwcm9qZWN0X2lkEhVCEzIyNTA1NzQwNTIyMDQ4Njk4ODU&filename=&opi=89354086" -o "$baseUrl\comissoes.html"
+curl.exe -L "https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ6Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpZCiVodG1sXzEyNmYzOGY4OGNjNDQ5MzI5NWNmZmQ0OGNkYTBlMzk0EgoSBhD4k5m3CxgBkgEjCgpwcm9qZWN0X2lkEhVCEzIyNTA1NzQwNTIyMDQ4Njk4ODU&filename=&opi=89354086" -o "$baseUrl\motoristas.html"
+curl.exe -L "https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ6Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpZCiVodG1sX2JiYzRhMGJmZjI3NTQ1ODFhOGY0MjBhNDQ0NjgzODQ0EgoSBhD4k5m3CxgBkgEjCgpwcm9qZWN0X2lkEhVCEzIyNTA1NzQwNTIyMDQ4Njk4ODU&filename=&opi=89354086" -o "$baseUrl\dashboard.html"
