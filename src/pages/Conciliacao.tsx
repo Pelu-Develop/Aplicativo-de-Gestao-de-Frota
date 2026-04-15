@@ -38,10 +38,20 @@ interface DespesaBruta {
     valorTotal?: number;
 }
 
+interface Carga {
+    id: string;
+    codigoViagem: string;
+    motoristaNome: string;
+    motoristaId?: string;
+    status: string;
+    origem: string;
+    destino: string;
+}
 
 export default function Conciliacao() {
     const [despesasBrutas, setDespesasBrutas] = useState<DespesaBruta[]>([]);
     const [motoristas, setMotoristas] = useState<Motorista[]>([]);
+    const [cargas, setCargas] = useState<Carga[]>([]);
     const [loading, setLoading] = useState(true);
     const [matchingId, setMatchingId] = useState<string | null>(null);
     const [selectedMotoristaId, setSelectedMotoristaId] = useState('');
@@ -81,6 +91,19 @@ export default function Conciliacao() {
         return () => unsubscribe();
     }, []);
 
+    // Fetch Trips (to link)
+    useEffect(() => {
+        const q = query(collection(db, 'cargas'));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const list = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            } as Carga));
+            setCargas(list);
+        });
+        return () => unsubscribe();
+    }, []);
+
     const handleMatch = async (bruta: DespesaBruta, modifiedData?: any) => {
         if (bruta.tipo !== 'prestacao_contas' && !selectedMotoristaId) return;
 
@@ -107,7 +130,8 @@ export default function Conciliacao() {
                 items: dataToUse.items || [],
                 status: 'pendente',
                 dataRegistro: serverTimestamp(),
-                origem: 'conciliacao_motorista'
+                origem: 'conciliacao_motorista',
+                viagensIds: dataToUse.viagensIds || []
             } : {
                 motoristaNome: motorista?.nome,
                 motoristaId: selectedMotoristaId,
@@ -332,6 +356,35 @@ export default function Conciliacao() {
                                 <div>
                                     <p className="text-[10px] font-black text-text-muted uppercase mb-1">Veículo</p>
                                     <p className="text-sm font-bold text-text-primary">{editData.placaCavalo} {editData.placaBau ? `/ ${editData.placaBau}` : ''}</p>
+                                </div>
+                                <div className="col-span-2 space-y-2">
+                                    <p className="text-[10px] font-black text-primary uppercase tracking-widest pl-1">Vincular Viagens</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {cargas
+                                            .filter(c => c.motoristaId === editData.motoristaId || c.motoristaNome === editData.motoristaNomeOriginal)
+                                            .slice(0, 5) // Show only recent 5 as options or similar
+                                            .map(c => (
+                                                <button
+                                                    key={c.id}
+                                                    onClick={() => {
+                                                        const current = editData.viagensIds || [];
+                                                        const next = current.includes(c.id) 
+                                                            ? current.filter((id: string) => id !== c.id) 
+                                                            : [...current, c.id];
+                                                        handleEditChange('viagensIds', next);
+                                                    }}
+                                                    className={`px-3 py-2 rounded-xl border text-[10px] font-black uppercase transition-all flex flex-col items-start gap-1 ${
+                                                        (editData.viagensIds || []).includes(c.id)
+                                                            ? 'bg-primary/20 border-primary text-primary'
+                                                            : 'bg-background border-border text-text-muted hover:border-primary/50'
+                                                    }`}
+                                                >
+                                                    <span>{c.codigoViagem}</span>
+                                                    <span className="opacity-50 lowercase font-medium">{c.origem.split(',')[0]} → {c.destino.split(',')[0]}</span>
+                                                </button>
+                                            ))}
+                                    </div>
+                                    <p className="text-[9px] text-text-muted italic">Selecione as viagens que compõem este acerto para cálculo de lucratividade.</p>
                                 </div>
                                 <div className="col-span-2 h-px bg-border"></div>
                                 <div>

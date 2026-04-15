@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import FloatingActionButton from './FloatingActionButton';
 
 export default function Layout() {
     return (
@@ -13,6 +14,7 @@ export default function Layout() {
                         <Outlet />
                     </div>
                 </div>
+                <FloatingActionButton />
             </main>
         </div>
     );

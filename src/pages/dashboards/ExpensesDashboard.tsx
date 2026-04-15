@@ -47,7 +47,7 @@ const COLORS = [
     '#f59e0b', // âmbar
 ];
 
-const CATEGORIAS = ['Peças', 'Serviços', 'Lavagem', 'Descarga', 'Estacionamento', 'Transporte', 'Borracharia', 'Outros', 'Diárias', 'Comissão Combustível'];
+const CATEGORIAS = ['Combustível', 'Peças', 'Serviços', 'Lavagem', 'Descarga', 'Estacionamento', 'Transporte', 'Borracharia', 'Outros', 'Diárias', 'Comissão Combustível'];
 
 // Helper para converter Timestamp ou string em Date
 function toDate(val: any): Date | null {
@@ -111,8 +111,8 @@ export default function ExpensesDashboard() {
             if (periodoAtivo) {
                 const dataReg = toDate(d.dataRegistro || d.dataInicio);
                 if (dataReg) {
-                    const inicio = new Date(dataInicio + 'T00:00:00');
-                    const fim = new Date(dataFim + 'T23:59:59');
+                    const inicio = new Date(dataInicio.includes('T') ? dataInicio : dataInicio + 'T00:00:00');
+                    const fim = new Date(dataFim.includes('T') ? dataFim : dataFim + 'T23:59:59');
                     if (dataReg < inicio || dataReg > fim) return false;
                 }
             }
@@ -376,7 +376,7 @@ export default function ExpensesDashboard() {
                             )}
                             {periodoAtivo && (
                                 <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-[10px] font-black text-purple-400">
-                                    <Calendar size={10} /> {new Date(dataInicio + 'T12:00:00').toLocaleDateString('pt-BR')} → {new Date(dataFim + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                    <Calendar size={10} /> {new Date(dataInicio.includes('T') ? dataInicio : dataInicio + 'T12:00:00').toLocaleDateString('pt-BR')} → {new Date(dataFim.includes('T') ? dataFim : dataFim + 'T12:00:00').toLocaleDateString('pt-BR')}
                                     <button onClick={() => setPeriodoAtivo(false)}><X size={10} /></button>
                                 </span>
                             )}
@@ -515,7 +515,7 @@ export default function ExpensesDashboard() {
                         <h3 className="text-xl font-black text-text-primary uppercase tracking-tight">Evolução por Período</h3>
                         <p className="text-text-muted text-[10px] font-black uppercase tracking-widest mt-1">
                             {periodoAtivo
-                                ? `${new Date(dataInicio + 'T12:00:00').toLocaleDateString('pt-BR')} → ${new Date(dataFim + 'T12:00:00').toLocaleDateString('pt-BR')}`
+                                ? `${new Date(dataInicio.includes('T') ? dataInicio : dataInicio + 'T12:00:00').toLocaleDateString('pt-BR')} → ${new Date(dataFim.includes('T') ? dataFim : dataFim + 'T12:00:00').toLocaleDateString('pt-BR')}`
                                 : 'Todos os períodos'}
                         </p>
                     </div>
@@ -621,7 +621,7 @@ export default function ExpensesDashboard() {
                                 </h3>
                                 <p className="text-text-muted text-[10px] font-black uppercase tracking-widest mt-1">
                                     {filtroCategoria ? <><span className="text-primary">{filtroCategoria}</span></> : 'Total consolidado'}
-                                    {periodoAtivo ? ` · ${new Date(dataInicio + 'T12:00:00').toLocaleDateString('pt-BR')} → ${new Date(dataFim + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
+                                    {periodoAtivo ? ` · ${new Date(dataInicio.includes('T') ? dataInicio : dataInicio + 'T12:00:00').toLocaleDateString('pt-BR')} → ${new Date(dataFim.includes('T') ? dataFim : dataFim + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
                                 </p>
                             </div>
                             <span className="px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-xl text-[10px] font-black text-primary uppercase tracking-widest">
@@ -667,7 +667,7 @@ export default function ExpensesDashboard() {
                                                 <div className="flex items-center gap-3">
                                                     <div className="size-8 rounded-xl flex items-center justify-center text-xs font-black"
                                                         style={{ backgroundColor: COLORS[i % COLORS.length] + '20', color: COLORS[i % COLORS.length] }}>
-                                                        {d.name.charAt(0).toUpperCase()}
+                                                        {String(d.name || '').charAt(0).toUpperCase()}
                                                     </div>
                                                     <span className="text-sm font-black text-text-primary">{d.name}</span>
                                                 </div>

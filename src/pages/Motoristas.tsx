@@ -11,7 +11,6 @@ import {
     doc
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { validateCPF } from '../utils/validators';
 import { maskCPF, maskPhone, maskPlate, formatCPFHidden } from '../utils/masks';
 
 interface Motorista {
@@ -101,8 +100,8 @@ export default function Motoristas() {
             errors.nome = 'Nome muito curto (mínimo 3 letras)';
         }
 
-        if (!validateCPF(formData.cpf)) {
-            errors.cpf = 'CPF inválido ou incompleto';
+        if (formData.cpf.length < 14) {
+            errors.cpf = 'CPF incompleto';
         }
 
         const telNumbers = formData.telefone.replace(/\D/g, '');
@@ -174,8 +173,8 @@ export default function Motoristas() {
                 const driverRef = doc(db, 'motoristas', editingId);
                 await updateDoc(driverRef, {
                     ...formData,
-                    placaCavalo: formData.placaCavalo.toUpperCase(),
-                    placaCarreta: formData.placaCarreta.toUpperCase(),
+                    placaCavalo: String(formData.placaCavalo || '').toUpperCase(),
+                    placaCarreta: String(formData.placaCarreta || '').toUpperCase(),
                     atualizadoEm: serverTimestamp()
                 });
                 showToast('Motorista atualizado com sucesso!', 'success');
@@ -183,8 +182,8 @@ export default function Motoristas() {
                 console.log("Adding new driver...");
                 await addDoc(collection(db, 'motoristas'), {
                     ...formData,
-                    placaCavalo: formData.placaCavalo.toUpperCase(),
-                    placaCarreta: formData.placaCarreta.toUpperCase(),
+                    placaCavalo: String(formData.placaCavalo || '').toUpperCase(),
+                    placaCarreta: String(formData.placaCarreta || '').toUpperCase(),
                     status: 'ativo',
                     criadoEm: serverTimestamp(),
                     atualizadoEm: serverTimestamp()
@@ -192,9 +191,9 @@ export default function Motoristas() {
                 showToast('Motorista cadastrado com sucesso!', 'success');
             }
             setIsFormOpen(false);
-        } catch (error) {
+        } catch (error: any) {
             console.error("Firestore Error:", error);
-            showToast('Erro ao salvar no banco de dados', 'error');
+            showToast(error.message || 'Erro ao salvar no banco de dados', 'error');
         } finally {
             setSubmitting(false);
         }
@@ -245,13 +244,13 @@ export default function Motoristas() {
     };
 
     const getInitials = (name: string) => {
-        return name.trim().split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+        return String(name || '').trim().split(' ').map(n => n?.[0] || '').join('').toUpperCase().substring(0, 2);
     };
 
     const filteredMotoristas = motoristas.filter(m => {
-        const matchesSearch = m.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            m.cpf.includes(searchTerm) ||
-            m.placaCavalo.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesSearch = (m.nome && m.nome.toLowerCase().includes(searchTerm.toLowerCase())) ||
+            (m.cpf && m.cpf.includes(searchTerm)) ||
+            (m.placaCavalo && m.placaCavalo.toLowerCase().includes(searchTerm.toLowerCase()));
         const matchesStatus = filterStatus === 'todos' || m.status === filterStatus;
         const matchesVinculo = filterVinculo === 'todos' || m.vinculo === filterVinculo;
         return matchesSearch && matchesStatus && matchesVinculo;

@@ -34,7 +34,6 @@ export default function TripsDashboard() {
         return () => unsubscribe();
     }, []);
 
-    const finishedTrips = despesas.filter(d => d.status === 'finalizado');
     const onRouteTrips = despesas.filter(d => d.status === 'pendente');
 
     const routeData = [

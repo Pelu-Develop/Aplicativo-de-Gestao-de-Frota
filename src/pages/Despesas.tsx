@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
     collection,
     addDoc,
@@ -8,8 +9,7 @@ import {
     serverTimestamp,
     updateDoc,
     doc,
-    deleteDoc,
-    where
+    deleteDoc
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import PrintLogo from '../assets/logo-pdf.png';
@@ -28,13 +28,6 @@ interface ItemDespesa {
     valor: number;
     descricao: string;
     data?: string;
-}
-
-interface Viagem {
-    id: string;
-    origem: string;
-    destino: string;
-    dataSaida: any;
 }
 
 interface Despesa {
@@ -59,13 +52,15 @@ interface Despesa {
     dataRegistro: any;
 }
 
-const CATEGORIAS = ['Peças', 'Serviços', 'Lavagem', 'Descarga', 'Estacionamento', 'Transporte', 'Borracharia', 'Outros'];
+const CATEGORIAS = ['Combustível', 'Peças', 'Serviços', 'Lavagem', 'Descarga', 'Estacionamento', 'Transporte', 'Borracharia', 'Outros'];
 
 export default function Despesas() {
     const [despesas, setDespesas] = useState<Despesa[]>([]);
     const [motoristasProprios, setMotoristasProprios] = useState<Motorista[]>([]);
-    const [viagensMotorista, setViagensMotorista] = useState<Viagem[]>([]);
+    const [todasViagens, setTodasViagens] = useState<any[]>([]);
+    const [idParaVincular, setIdParaVincular] = useState('');
     const [loading, setLoading] = useState(true);
+    const [searchParams, setSearchParams] = useSearchParams();
 
     // Form / Edit state
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -105,9 +100,9 @@ export default function Despesas() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [newGlobalRate, setNewGlobalRate] = useState<string>('110');
 
-    // Fetch Motoristas (Frota Própria)
+    // Fetch Motoristas
     useEffect(() => {
-        const q = query(collection(db, 'motoristas'), where('vinculo', '==', 'propria'));
+        const q = query(collection(db, 'motoristas'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const list = snapshot.docs.map(doc => ({
                 id: doc.id,
@@ -135,8 +130,8 @@ export default function Despesas() {
     // Fetch Global Config
     useEffect(() => {
         const unsubscribe = onSnapshot(doc(db, 'config', 'diaria'), (snapshot) => {
-            if (snapshot.exists()) {
-                const value = snapshot.data().valor;
+            if (snapshot.exists() && snapshot.data().valor !== undefined) {
+                const value = Number(snapshot.data().valor) || 110;
                 setGlobalValorDiaria(value);
                 setNewGlobalRate(value.toString());
                 // Update formData if creating new
@@ -148,36 +143,39 @@ export default function Despesas() {
         return () => unsubscribe();
     }, [editingId]);
 
-    // Fetch Viagens when motorista is selected
+    // Fetch Todas as Viagens para vínculo simples
     useEffect(() => {
-        if (!formData.motoristaNome) {
-            setViagensMotorista([]);
-            return;
-        }
-
-        // Ideally search by motoristaId or motoristaNome in 'cargas' collection
-        // For now, let's look for a 'cargas' or 'viagens' collection
-        const q = query(
-            collection(db, 'cargas'),
-            where('motoristaNome', '==', formData.motoristaNome),
-            orderBy('dataSaida', 'desc')
-        );
-
+        const q = query(collection(db, 'cargas'), orderBy('dataSaida', 'desc'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const list = snapshot.docs.map(doc => ({
                 id: doc.id,
+                codigoViagem: doc.data().codigoViagem,
                 origem: doc.data().origem,
                 destino: doc.data().destino,
-                dataSaida: doc.data().dataSaida
-            } as Viagem));
-            setViagensMotorista(list);
-        }, (error) => {
-            console.log("Collection 'cargas' not found or empty:", error);
-            setViagensMotorista([]);
+                dataSaida: doc.data().dataSaida,
+                motoristaNome: doc.data().motoristaNome,
+                cliente: doc.data().cliente,
+                dataCarregamento: doc.data().dataCarregamento,
+                dataPrevistaDescarregamento: doc.data().dataPrevistaDescarregamento
+            } as any));
+            setTodasViagens(list);
         });
-
         return () => unsubscribe();
-    }, [formData.motoristaNome]);
+    }, []);
+
+    // Effect to handle query params (new action or filter by name)
+    useEffect(() => {
+        const action = searchParams.get('action');
+        const nomeParam = searchParams.get('nome');
+
+        if (action === 'new' && !loading) {
+            openCreateModal();
+            setSearchParams({}, { replace: true });
+        } else if (nomeParam && !loading) {
+            setFilters(prev => ({ ...prev, nome: nomeParam }));
+            setSearchParams({}, { replace: true });
+        }
+    }, [searchParams, loading]);
 
     const handleMotoristaChange = (nome: string) => {
         const motorista = motoristasProprios.find(m => m.nome === nome);
@@ -233,6 +231,17 @@ export default function Despesas() {
     const removeItem = (index: number) => {
         const updated = formData.items.filter((_, i) => i !== index);
         setFormData({ ...formData, items: updated });
+    };
+
+    const editItem = (index: number) => {
+        const itemToEdit = formData.items[index];
+        setNewItem({
+            categoria: itemToEdit.categoria,
+            valor: itemToEdit.valor.toString(),
+            descricao: itemToEdit.descricao || '',
+            data: itemToEdit.data || ''
+        });
+        removeItem(index);
     };
 
     const showToast = (message: string, type: 'success' | 'error') => {
@@ -329,7 +338,7 @@ export default function Despesas() {
                 valorTotal: valorTotal,
                 saldoFinal: saldoFinal,
                 status: formData.status || 'pendente',
-                dataRegistro: editingId ? despesas.find(d => d.id === editingId)?.dataRegistro : serverTimestamp()
+                dataRegistro: editingId ? (despesas.find(d => d.id === editingId)?.dataRegistro || serverTimestamp()) : serverTimestamp()
             };
 
             if (editingId) {
@@ -390,25 +399,25 @@ export default function Despesas() {
     };
 
     const filteredDespesas = despesas.filter(d => {
-        const matchNome = !filters.nome || d.motoristaNome.toLowerCase().includes(filters.nome.toLowerCase());
+        const matchNome = !filters.nome || (d.motoristaNome && d.motoristaNome.toLowerCase().includes(filters.nome.toLowerCase()));
         const matchPlaca = !filters.placa ||
             (d.placaCavalo && d.placaCavalo.toLowerCase().includes(filters.placa.toLowerCase())) ||
             (d.placaBau && d.placaBau.toLowerCase().includes(filters.placa.toLowerCase()));
 
         let matchPeriodo = true;
-        const dInicio = d.dataInicio ? new Date(d.dataInicio + 'T12:00:00') : null;
-        const dFim = d.dataFim ? new Date(d.dataFim + 'T12:00:00') : null;
+        const dInicio = d.dataInicio ? new Date(d.dataInicio.includes('T') ? d.dataInicio : d.dataInicio + 'T12:00:00') : null;
+        const dFim = d.dataFim ? new Date(d.dataFim.includes('T') ? d.dataFim : d.dataFim + 'T12:00:00') : null;
 
         if (filters.dataInicio) {
-            const fInicio = new Date(filters.dataInicio + 'T12:00:00');
+            const fInicio = new Date(filters.dataInicio.includes('T') ? filters.dataInicio : filters.dataInicio + 'T12:00:00');
             if (dInicio && dInicio < fInicio) matchPeriodo = false;
         }
         if (filters.dataFim) {
-            const fFim = new Date(filters.dataFim + 'T12:00:00');
+            const fFim = new Date(filters.dataFim.includes('T') ? filters.dataFim : filters.dataFim + 'T12:00:00');
             if (dFim && dFim > fFim) matchPeriodo = false;
         }
 
-        const matchViagem = !filters.viagemId || (d.viagensIds && d.viagensIds.some(id => id.toLowerCase().includes(filters.viagemId.toLowerCase())));
+        const matchViagem = !filters.viagemId || (Array.isArray(d.viagensIds) && d.viagensIds.some(id => id && String(id).toLowerCase().includes(filters.viagemId.toLowerCase())));
 
         return matchNome && matchPlaca && matchPeriodo && matchViagem;
     });
@@ -449,12 +458,12 @@ export default function Despesas() {
             {/* Filters Bar */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3 bg-surface border border-border p-4 rounded-[24px] shadow-sm">
                 <div className="flex flex-col gap-1">
-                    <span className="text-[10px] font-black uppercase text-text-muted mb-1 ml-1">Motorista</span>
+                    <span className="text-[10px] font-black uppercase text-text-muted ml-1">Motorista</span>
                     <input
                         type="text"
                         placeholder="Nome..."
                         list="sugestoes-motoristas"
-                        className="bg-background border border-border rounded-xl px-3 py-2 text-xs focus:border-primary/50 outline-none w-full"
+                        className="bg-background border border-border rounded-xl px-3 h-[34px] text-xs focus:border-primary/50 outline-none w-full"
                         value={filters.nome}
                         onChange={(e) => setFilters({ ...filters, nome: e.target.value })}
                     />
@@ -463,12 +472,12 @@ export default function Despesas() {
                     </datalist>
                 </div>
                 <div className="flex flex-col gap-1">
-                    <span className="text-[10px] font-black uppercase text-text-muted mb-1 ml-1">Placa</span>
+                    <span className="text-[10px] font-black uppercase text-text-muted ml-1">Placa</span>
                     <input
                         type="text"
                         placeholder="ABC-1234"
                         list="sugestoes-placas"
-                        className="bg-background border border-border rounded-xl px-3 py-2 text-xs focus:border-primary/50 outline-none w-full"
+                        className="bg-background border border-border rounded-xl px-3 h-[34px] text-xs focus:border-primary/50 outline-none w-full"
                         value={filters.placa}
                         onChange={(e) => setFilters({ ...filters, placa: e.target.value })}
                     />
@@ -477,12 +486,12 @@ export default function Despesas() {
                     </datalist>
                 </div>
                 <div className="flex flex-col gap-1">
-                    <span className="text-[10px] font-black uppercase text-text-muted mb-1 ml-1">ID Viagem</span>
+                    <span className="text-[10px] font-black uppercase text-text-muted ml-1">ID Viagem</span>
                     <input
                         type="text"
                         placeholder="Busca ID..."
                         list="sugestoes-viagens"
-                        className="bg-background border border-border rounded-xl px-3 py-2 text-xs focus:border-primary/50 outline-none w-full"
+                        className="bg-background border border-border rounded-xl px-3 h-[34px] text-xs focus:border-primary/50 outline-none w-full"
                         value={filters.viagemId}
                         onChange={(e) => setFilters({ ...filters, viagemId: e.target.value })}
                     />
@@ -491,29 +500,29 @@ export default function Despesas() {
                     </datalist>
                 </div>
                 <div className="flex flex-col gap-1">
-                    <span className="text-[10px] font-black uppercase text-text-muted mb-1 ml-1">Início</span>
+                    <span className="text-[10px] font-black uppercase text-text-muted ml-1">Início (Acerto)</span>
                     <input
                         type="date"
-                        className="bg-background border border-border rounded-xl px-3 py-2 text-xs outline-none w-full"
+                        className="bg-background border border-border rounded-xl px-3 h-[34px] text-xs outline-none w-full"
                         value={filters.dataInicio}
                         onChange={(e) => setFilters({ ...filters, dataInicio: e.target.value })}
                         onClick={(e) => (e.target as any).showPicker?.()}
                     />
                 </div>
                 <div className="flex flex-col gap-1">
-                    <span className="text-[10px] font-black uppercase text-text-muted mb-1 ml-1">Fim</span>
+                    <span className="text-[10px] font-black uppercase text-text-muted ml-1">Fim (Acerto)</span>
                     <input
                         type="date"
-                        className="bg-background border border-border rounded-xl px-3 py-2 text-xs outline-none w-full"
+                        className="bg-background border border-border rounded-xl px-3 h-[34px] text-xs outline-none w-full"
                         value={filters.dataFim}
                         onChange={(e) => setFilters({ ...filters, dataFim: e.target.value })}
                         onClick={(e) => (e.target as any).showPicker?.()}
                     />
                 </div>
-                <div className="flex items-end">
+                <div className="flex items-end flex-1 min-w-[100px]">
                     <button
                         onClick={() => setFilters({ nome: '', placa: '', dataInicio: '', dataFim: '', viagemId: '' })}
-                        className="w-full h-[38px] border border-border text-text-muted hover:text-red-500 rounded-xl flex items-center justify-center gap-2 transition-colors text-[10px] font-black uppercase"
+                        className="w-full h-[34px] bg-background-dark border border-border text-text-muted hover:text-primary hover:border-primary/50 rounded-xl flex items-center justify-center gap-2 transition-colors text-[10px] font-black uppercase tracking-widest"
                     >
                         <span className="material-symbols-outlined text-sm">filter_list_off</span>
                         Limpar
@@ -563,7 +572,7 @@ export default function Despesas() {
                                         <td className="px-6 py-4">
                                             <div className="flex flex-col">
                                                 <span className="text-xs font-medium">
-                                                    {d.dataInicio ? `${new Date(d.dataInicio + 'T12:00:00').toLocaleDateString('pt-BR')} → ${new Date(d.dataFim + 'T12:00:00').toLocaleDateString('pt-BR')}` : '---'}
+                                                    {d.dataInicio ? `${new Date(d.dataInicio.includes('T') ? d.dataInicio : d.dataInicio + 'T12:00:00').toLocaleDateString('pt-BR')} → ${new Date(d.dataFim.includes('T') ? d.dataFim : d.dataFim + 'T12:00:00').toLocaleDateString('pt-BR')}` : '---'}
                                                 </span>
                                                 {d.viagensIds && d.viagensIds.length > 0 && (
                                                     <span className="text-[9px] text-primary font-black uppercase tracking-widest">
@@ -582,7 +591,7 @@ export default function Despesas() {
                                                 {d.viagensIds && d.viagensIds.length > 0 ? (
                                                     d.viagensIds.map((id, idx) => (
                                                         <span key={idx} className="bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter">
-                                                            #{id}
+                                                            #{id.substring(0, 6)}
                                                         </span>
                                                     ))
                                                 ) : (
@@ -710,33 +719,72 @@ export default function Despesas() {
                                 </div>
                             </div>
 
-                            {/* Viagens Vinculadas (Multi) */}
-                            <div className={`flex flex-col gap-3 ${formData.status === 'finalizado' ? 'opacity-50 pointer-events-none' : ''}`}>
-                                <span className="text-[10px] font-black text-text-muted uppercase tracking-widest ml-1">Vincular Viagens</span>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[150px] overflow-y-auto p-3 bg-background-dark/30 rounded-2xl border border-border custom-scrollbar">
-                                    {viagensMotorista.length === 0 ? (
-                                        <p className="col-span-2 text-[10px] text-text-muted italic text-center py-4">Nenhuma viagem disponível para vincular.</p>
-                                    ) : (
-                                        viagensMotorista.map(v => (
-                                            <button
-                                                key={v.id}
-                                                type="button"
-                                                onClick={() => toggleViagem(v.id)}
-                                                className={`flex flex-col p-3 rounded-xl border text-left transition-all ${formData.viagensIds?.includes(v.id)
-                                                    ? 'bg-primary/10 border-primary text-primary'
-                                                    : 'bg-background border-border text-text-muted hover:border-primary/30'}`}
-                                                disabled={submitting || formData.status === 'finalizado'}
-                                            >
-                                                <div className="flex justify-between items-center w-full">
-                                                    <span className="text-[11px] font-black uppercase truncate max-w-[150px]">{v.origem} → {v.destino}</span>
-                                                    {formData.viagensIds?.includes(v.id) && <span className="material-symbols-outlined text-sm">check_circle</span>}
-                                                </div>
-                                                <span className="text-[9px] font-medium opacity-70">
-                                                    {v.dataSaida?.toDate ? new Date(v.dataSaida.toDate()).toLocaleDateString('pt-BR') : '---'}
-                                                </span>
-                                            </button>
-                                        ))
-                                    )}
+                            {/* Vincular Viagens (Novo Formato Simples) */}
+                            <div className="space-y-4">
+                                <div className="flex flex-col gap-2">
+                                    <span className="text-[10px] font-black text-text-muted uppercase tracking-widest ml-1 text-primary">Pesquisar e Vincular Viagens</span>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            list="lista-viagens-global"
+                                            placeholder="Busque por código ou ID..."
+                                            className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-primary outline-none"
+                                            value={idParaVincular}
+                                            onChange={(e) => setIdParaVincular(e.target.value)}
+                                        />
+                                        <datalist id="lista-viagens-global">
+                                            {todasViagens.map(v => (
+                                                <option key={v.id} value={v.codigoViagem}>{v.motoristaNome} • {v.origem} → {v.destino}</option>
+                                            ))}
+                                        </datalist>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const viagem = todasViagens.find(v => v.codigoViagem === idParaVincular || v.id === idParaVincular);
+                                                if (viagem) {
+                                                    if (!formData.viagensIds.includes(viagem.id)) {
+                                                        setFormData({ ...formData, viagensIds: [...formData.viagensIds, viagem.id] });
+                                                    }
+                                                    setIdParaVincular('');
+                                                } else {
+                                                    alert('Viagem não encontrada');
+                                                }
+                                            }}
+                                            className="bg-primary/20 hover:bg-primary text-primary hover:text-background-dark font-black px-4 rounded-xl transition-all"
+                                        >
+                                            ADICIONAR
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <span className="text-[10px] font-black text-text-muted uppercase tracking-widest ml-1">Viagens Vinculadas</span>
+                                    <div className="bg-background-dark/30 rounded-2xl border border-border overflow-hidden min-h-[50px]">
+                                        {formData.viagensIds.length === 0 ? (
+                                            <p className="text-[10px] text-text-muted italic p-6 text-center">Nenhuma viagem vinculada a este acerto.</p>
+                                        ) : (
+                                            <div className="divide-y divide-border/50">
+                                                {formData.viagensIds.map((vid: string) => {
+                                                    const v = todasViagens.find(t => t.id === vid);
+                                                    return (
+                                                        <div key={vid} className="flex justify-between items-center p-3 hover:bg-primary/5 transition-colors">
+                                                            <div className="flex flex-col">
+                                                                <span className="text-xs font-bold text-primary uppercase">{v?.codigoViagem || 'Cód. Desconhecido'}</span>
+                                                                <span className="text-[9px] text-text-muted font-bold">{v?.motoristaNome} • {v?.origem} → {v?.destino}</span>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setFormData({ ...formData, viagensIds: formData.viagensIds.filter((id: string) => id !== vid) })}
+                                                                className="text-text-muted hover:text-red-500 transition-colors p-1"
+                                                            >
+                                                                <span className="material-symbols-outlined text-lg">delete</span>
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
@@ -744,11 +792,11 @@ export default function Despesas() {
                             <div className="grid grid-cols-2 gap-4">
                                 <label className="flex flex-col gap-2">
                                     <span className="text-[10px] font-black text-text-muted uppercase tracking-widest ml-1">Data Início (Acerto)</span>
-                                    <input type="date" className="w-full bg-background border border-border rounded-2xl px-4 py-3 text-xs text-text-primary outline-none" value={formData.dataInicio} onChange={(e) => setFormData({ ...formData, dataInicio: e.target.value })} disabled={submitting || formData.status === 'finalizado'} />
+                                    <input type="date" className="w-full bg-background border border-border rounded-2xl px-4 py-3 text-sm text-text-primary outline-none" value={formData.dataInicio} onChange={(e) => setFormData({ ...formData, dataInicio: e.target.value })} disabled={submitting || formData.status === 'finalizado'} />
                                 </label>
                                 <label className="flex flex-col gap-2">
                                     <span className="text-[10px] font-black text-text-muted uppercase tracking-widest ml-1">Data Final (Acerto)</span>
-                                    <input type="date" className="w-full bg-background border border-border rounded-2xl px-4 py-3 text-xs text-text-primary outline-none disabled:opacity-50" value={formData.dataFim} onChange={(e) => setFormData({ ...formData, dataFim: e.target.value })} disabled={submitting || formData.status === 'finalizado'} />
+                                    <input type="date" className="w-full bg-background border border-border rounded-2xl px-4 py-3 text-sm text-text-primary outline-none disabled:opacity-50" value={formData.dataFim} onChange={(e) => setFormData({ ...formData, dataFim: e.target.value })} disabled={submitting || formData.status === 'finalizado'} />
                                 </label>
                             </div>
 
@@ -853,9 +901,14 @@ export default function Despesas() {
                                                 </div>
                                                 <div className="flex items-center gap-3">
                                                     <span className="font-black text-sm text-text-primary">R$ {item.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                                                    <button type="button" onClick={() => removeItem(idx)} className="text-red-500 hover:text-red-400 opacity-0 group-hover/item:opacity-100 transition-opacity">
-                                                        <span className="material-symbols-outlined text-lg">delete</span>
-                                                    </button>
+                                                    <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                                                        <button type="button" onClick={() => editItem(idx)} className="text-blue-500 hover:text-blue-400 cursor-pointer">
+                                                            <span className="material-symbols-outlined text-[16px]">edit</span>
+                                                        </button>
+                                                        <button type="button" onClick={() => removeItem(idx)} className="text-red-500 hover:text-red-400 cursor-pointer">
+                                                            <span className="material-symbols-outlined text-[16px]">delete</span>
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                             {item.descricao && (
@@ -997,20 +1050,57 @@ export default function Despesas() {
                         {/* Detalhes da Viagem */}
                         <div className="mb-3">
                             <h2 className="text-[8px] font-black uppercase tracking-widest border-b border-gray-300 pb-0.5 mb-2">Resumo da Movimentação</h2>
-                            <div className="bg-gray-50 p-2.5 rounded-lg grid grid-cols-3 gap-2">
+                            <div className="bg-gray-50 p-2.5 rounded-lg grid grid-cols-3 gap-2 mb-2">
                                 <div>
                                     <p className="text-[8px] text-gray-500 uppercase font-black">Período</p>
                                     <p className="text-xs font-bold">{new Date(printingDespesa.dataInicio + 'T12:00:00').toLocaleDateString('pt-BR')} a {new Date(printingDespesa.dataFim + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
                                 </div>
                                 <div>
                                     <p className="text-[8px] text-gray-500 uppercase font-black">Total de Dias</p>
-                                    <p className="text-xs font-bold">{printingDespesa.diasDiaria} Diárias</p>
+                                    <p className="text-xs font-bold">{printingDespesa.diasDiaria} Diárias (R$ {printingDespesa.valorDiaria?.toLocaleString('pt-BR')})</p>
                                 </div>
                                 <div>
-                                    <p className="text-[8px] text-gray-500 uppercase font-black">Viagens Vinculadas</p>
-                                    <p className="text-xs font-bold">{printingDespesa.viagensIds?.length || 0} Registros</p>
+                                    <p className="text-[8px] text-gray-500 uppercase font-black">Contagem de Cargas</p>
+                                    <p className="text-xs font-bold">{printingDespesa.viagensIds?.length || 0} Viagens</p>
                                 </div>
                             </div>
+                            
+                            {printingDespesa.viagensIds && printingDespesa.viagensIds.length > 0 && (
+                                <table className="w-full text-[9px] border-collapse mt-1">
+                                    <thead>
+                                        <tr className="bg-gray-100 border-y border-gray-300 text-left font-black uppercase text-[7px]">
+                                            <th className="py-1 px-2">Cód / Cliente</th>
+                                            <th className="py-1 px-2">Datas (Carreg/Descarreg)</th>
+                                            <th className="py-1 px-2">Rota (Origem → Destino)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {todasViagens.filter(v => printingDespesa.viagensIds?.includes(v.id)).map(v => (
+                                            <tr key={v.id}>
+                                                <td className="py-1 px-2">
+                                                    <p className="font-bold">{v.codigoViagem || 'V-N/A'}</p>
+                                                    <p className="text-[7px] text-gray-500">{v.cliente || '-'}</p>
+                                                </td>
+                                                <td className="py-1 px-2 whitespace-nowrap">
+                                                    <div className="flex flex-col">
+                                                        <span>{v.dataCarregamento ? new Date(v.dataCarregamento + 'T12:00:00').toLocaleDateString('pt-BR') : '---'}</span>
+                                                        <span className="text-[7px] text-gray-400 italic">Prev: {v.dataPrevistaDescarregamento ? new Date(v.dataPrevistaDescarregamento + 'T12:00:00').toLocaleDateString('pt-BR') : '---'}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="py-1 px-2 uppercase">{v.origem} → {v.destino}</td>
+                                            </tr>
+                                        ))}
+                                        {/* Fallback if list is not fully loaded in state */}
+                                        {printingDespesa.viagensIds.length > todasViagens.filter(v => printingDespesa.viagensIds?.includes(v.id)).length && (
+                                            <tr>
+                                                <td colSpan={3} className="py-1 px-2 text-gray-400 italic text-[7px]">
+                                                    + {printingDespesa.viagensIds.length - todasViagens.filter(v => printingDespesa.viagensIds?.includes(v.id)).length} outras viagens vinculadas a este acerto.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            )}
                         </div>
 
                         {/* Tabela de Despesas */}

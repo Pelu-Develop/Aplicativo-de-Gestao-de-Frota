@@ -6,6 +6,7 @@ import MainDashboard from './pages/dashboards/MainDashboard';
 import TripsDashboard from './pages/dashboards/TripsDashboard';
 import ExpensesDashboard from './pages/dashboards/ExpensesDashboard';
 import CommissionsDashboard from './pages/dashboards/CommissionsDashboard';
+import ProfitabilityDashboard from './pages/dashboards/ProfitabilityDashboard';
 import Motoristas from './pages/Motoristas';
 import ControleCargas from './pages/ControleCargas';
 import Comissoes from './pages/Comissoes';
@@ -14,6 +15,7 @@ import Conciliacao from './pages/Conciliacao';
 import Perfil from './pages/Perfil';
 import Login from './pages/Login';
 import PrestacaoContas from './pages/PrestacaoContas';
+import Clientes from './pages/Clientes';
 
 function App() {
   return (
@@ -21,6 +23,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/prestacao-contas" element={<PrestacaoContas />} />
 
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<Layout />}>
@@ -28,14 +31,15 @@ function App() {
               <Route path="dashboards/viagens" element={<TripsDashboard />} />
               <Route path="dashboards/despesas" element={<ExpensesDashboard />} />
               <Route path="dashboards/comissoes" element={<CommissionsDashboard />} />
+              <Route path="dashboards/resultado" element={<ProfitabilityDashboard />} />
               <Route path="motoristas" element={<Motoristas />} />
               <Route path="cargas" element={<ControleCargas />} />
               <Route path="comissoes" element={<Comissoes />} />
               <Route path="despesas" element={<Despesas />} />
+              <Route path="clientes" element={<Clientes />} />
               <Route path="conciliacao" element={<Conciliacao />} />
               <Route path="perfil" element={<Perfil />} />
             </Route>
-            <Route path="prestacao-contas" element={<PrestacaoContas />} />
           </Route>
         </Routes>
       </BrowserRouter>

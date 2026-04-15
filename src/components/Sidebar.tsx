@@ -33,32 +33,52 @@ export default function Sidebar() {
                         <span className="material-symbols-outlined text-[18px]">query_stats</span>
                         <span className="text-xs font-semibold">Despesas</span>
                     </Link>
-                    <Link to="/dashboards/comissoes" className={`flex items-center gap-3 px-3 py-2 rounded-lg group transition-colors ${isActive('/dashboards/comissoes') ? 'bg-primary/10 text-primary border border-primary/20' : 'text-text-muted hover:bg-surface/80 hover:text-text-primary'}`}>
-                        <span className="material-symbols-outlined text-[18px]">payments</span>
-                        <span className="text-xs font-semibold">DB Comissões</span>
+                    <Link to="/dashboards/resultado" className={`flex items-center gap-3 px-3 py-2 rounded-lg group transition-colors ${isActive('/dashboards/resultado') ? 'bg-primary/10 text-primary border border-primary/20' : 'text-text-muted hover:bg-surface/80 hover:text-text-primary'}`}>
+                        <span className="material-symbols-outlined text-[18px]">activity_zone</span>
+                        <span className="text-xs font-semibold">DB Resultado</span>
                     </Link>
                 </div>
                 <div className="h-px bg-border my-2"></div>
-                <Link to="/cargas" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg group transition-colors ${isActive('/cargas') ? 'bg-primary/10 text-primary border border-primary/20' : 'text-text-muted hover:bg-surface/80 hover:text-text-primary'}`}>
-                    <span className="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">local_shipping</span>
-                    <span className="text-sm font-medium">Viagens</span>
-                </Link>
-                <Link to="/motoristas" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg group transition-colors ${isActive('/motoristas') ? 'bg-primary/10 text-primary border border-primary/20' : 'text-text-muted hover:bg-surface/80 hover:text-text-primary'}`}>
-                    <span className="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">group</span>
-                    <span className="text-sm font-medium">Motoristas</span>
-                </Link>
-                <Link to="/comissoes" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg group transition-colors ${isActive('/comissoes') ? 'bg-primary/10 text-primary border border-primary/20' : 'text-text-muted hover:bg-surface/80 hover:text-text-primary'}`}>
-                    <span className="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">receipt_long</span>
-                    <span className="text-sm font-medium">Comissões</span>
-                </Link>
-                <Link to="/despesas" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg group transition-colors ${isActive('/despesas') ? 'bg-primary/10 text-primary border border-primary/20' : 'text-text-muted hover:bg-surface/80 hover:text-text-primary'}`}>
-                    <span className="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">account_balance_wallet</span>
-                    <span className="text-sm font-medium">Despesas</span>
-                </Link>
-                <Link to="/conciliacao" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg group transition-colors ${isActive('/conciliacao') ? 'bg-primary/10 text-primary border border-primary/20' : 'text-text-muted hover:bg-surface/80 hover:text-text-primary'}`}>
-                    <span className="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">rule</span>
-                    <span className="text-sm font-medium">Conciliação</span>
-                </Link>
+                
+                <div className="flex flex-col gap-1 mt-2">
+                    <p className="px-3 text-[10px] font-black uppercase text-text-muted tracking-widest mb-1 opacity-50">Operacional</p>
+                    <Link to="/cargas" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg group transition-colors ${isActive('/cargas') ? 'bg-primary/10 text-primary border border-primary/20' : 'text-text-muted hover:bg-surface/80 hover:text-text-primary'}`}>
+                        <span className="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">local_shipping</span>
+                        <span className="text-sm font-medium">Viagens</span>
+                    </Link>
+                    <Link to="/despesas" className={`flex items-center gap-3 px-3 py-2 rounded-lg group transition-colors ${isActive('/despesas') ? 'bg-primary/10 text-primary border border-primary/20' : 'text-text-muted hover:bg-surface/80 hover:text-text-primary'}`}>
+                        <span className="material-symbols-outlined text-[18px]">account_balance_wallet</span>
+                        <span className="text-xs font-semibold">Despesas (Acertos)</span>
+                    </Link>
+                    <Link to="/conciliacao" className={`flex items-center gap-3 px-3 py-2 rounded-lg group transition-colors ${isActive('/conciliacao') ? 'bg-primary/10 text-primary border border-primary/20' : 'text-text-muted hover:bg-surface/80 hover:text-text-primary'}`}>
+                        <span className="material-symbols-outlined text-[18px]">rule</span>
+                        <span className="text-xs font-semibold">Conciliação</span>
+                    </Link>
+                </div>
+
+                <div className="flex flex-col gap-1 mt-2">
+                    <p className="px-3 text-[10px] font-black uppercase text-text-muted tracking-widest mb-1 opacity-50">Pessoal</p>
+                    <Link to="/comissoes" className={`flex items-center gap-3 px-3 py-2 rounded-lg group transition-colors ${isActive('/comissoes') ? 'bg-primary/10 text-primary border border-primary/20' : 'text-text-muted hover:bg-surface/80 hover:text-text-primary'}`}>
+                        <span className="material-symbols-outlined text-[18px]">receipt_long</span>
+                        <span className="text-xs font-semibold">Comissões</span>
+                    </Link>
+                    <Link to="/dashboards/comissoes" className={`flex items-center gap-3 px-3 py-2 rounded-lg group transition-colors ${isActive('/dashboards/comissoes') ? 'bg-primary/10 text-primary border border-primary/20' : 'text-text-muted hover:bg-surface/80 hover:text-text-primary'}`}>
+                        <span className="material-symbols-outlined text-[18px]">payments</span>
+                        <span className="text-xs font-semibold">Dashboard Comissões</span>
+                    </Link>
+                </div>
+
+                <div className="flex flex-col gap-1 mt-2">
+                    <p className="px-3 text-[10px] font-black uppercase text-text-muted tracking-widest mb-1 opacity-50">Cadastros</p>
+                    <Link to="/motoristas" className={`flex items-center gap-3 px-3 py-2 rounded-lg group transition-colors ${isActive('/motoristas') ? 'bg-primary/10 text-primary border border-primary/20' : 'text-text-muted hover:bg-surface/80 hover:text-text-primary'}`}>
+                        <span className="material-symbols-outlined text-[18px]">group</span>
+                        <span className="text-xs font-semibold">Motoristas</span>
+                    </Link>
+                    <Link to="/clientes" className={`flex items-center gap-3 px-3 py-2 rounded-lg group transition-colors ${isActive('/clientes') ? 'bg-primary/10 text-primary border border-primary/20' : 'text-text-muted hover:bg-surface/80 hover:text-text-primary'}`}>
+                        <span className="material-symbols-outlined text-[18px]">storefront</span>
+                        <span className="text-xs font-semibold">Clientes</span>
+                    </Link>
+                </div>
             </nav>
             <div className="p-4 border-t border-border">
                 <Link to="/perfil" className="flex items-center gap-3 px-3 py-2 rounded-lg bg-surface border border-border cursor-pointer hover:bg-border/30 hover:border-primary/50 transition-colors group">

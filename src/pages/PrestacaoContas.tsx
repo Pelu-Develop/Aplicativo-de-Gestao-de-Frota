@@ -19,19 +19,34 @@ interface ItemGasto {
     observacao?: string;
 }
 
+interface Carga {
+    id: string;
+    codigoViagem: string;
+    origem: string;
+    destino: string;
+    status: string;
+}
+
 const CATEGORIAS = ['Peças', 'Serviços', 'Lavagem', 'Descarga', 'Estacionamento', 'Transporte', 'Borracharia', 'Outros'];
 
 export default function PrestacaoContas() {
     const [step, setStep] = useState<'identification' | 'form'>('identification');
     const [cpfInput, setCpfInput] = useState('');
     const [motorista, setMotorista] = useState<motoristaData | null>(null);
+    const [cargas, setCargas] = useState<Carga[]>([]);
+    const [selectedViagens, setSelectedViagens] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
+    const getLocalDatetime = () => {
+        const tzOffset = (new Date()).getTimezoneOffset() * 60000;
+        return new Date(Date.now() - tzOffset).toISOString().slice(0, 16);
+    };
+
     // Form State
-    const [dataInicioViagem, setDataInicioViagem] = useState(new Date().toISOString().split('T')[0]);
-    const [dataFimViagem, setDataFimViagem] = useState(new Date().toISOString().split('T')[0]);
+    const [dataInicioViagem, setDataInicioViagem] = useState(getLocalDatetime());
+    const [dataFimViagem, setDataFimViagem] = useState(getLocalDatetime());
     const [valorDiaria, setValorDiaria] = useState<number>(110);
     const [placaCavalo, setPlacaCavalo] = useState('');
     const [placaBau, setPlacaBau] = useState('');
@@ -43,15 +58,34 @@ export default function PrestacaoContas() {
         observacao: ''
     });
 
-    // Fetch Global Daily Rate
+    // Fetch Global Daily Rate and Available Trips
     useEffect(() => {
-        const unsubscribe = onSnapshot(doc(db, 'config', 'diaria'), (snapshot) => {
-            if (snapshot.exists()) {
-                setValorDiaria(snapshot.data().valor);
+        const unsubscribeDiaria = onSnapshot(doc(db, 'config', 'diaria'), (snapshot) => {
+            if (snapshot.exists() && snapshot.data().valor !== undefined && snapshot.data().valor !== null) {
+                setValorDiaria(Number(snapshot.data().valor));
             }
         });
-        return () => unsubscribe();
-    }, []);
+
+        let unsubscribeCargas = () => {};
+        if (motorista) {
+            const q = query(
+                collection(db, 'cargas'), 
+                where('motoristaNome', '==', motorista.nome)
+            );
+            unsubscribeCargas = onSnapshot(q, (snapshot) => {
+                const list = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                } as Carga));
+                setCargas(list);
+            });
+        }
+
+        return () => {
+            unsubscribeDiaria();
+            unsubscribeCargas();
+        };
+    }, [motorista]);
 
     const showToast = (message: string, type: 'success' | 'error' = 'success') => {
         setToast({ message, type });
@@ -99,6 +133,14 @@ export default function PrestacaoContas() {
         setGastos(gastos.filter((_, i: number) => i !== index));
     };
 
+    const editGasto = (index: number) => {
+        const itemToEdit = gastos[index];
+        setCurrentItem(itemToEdit);
+        setGastos(gastos.filter((_, i: number) => i !== index));
+        // Scroll slightly down to make the form visible on mobile
+        window.scrollTo({ top: document.body.scrollHeight / 3, behavior: 'smooth' });
+    };
+
     const calculateDays = () => {
         const start = new Date(dataInicioViagem);
         const end = new Date(dataFimViagem);
@@ -122,8 +164,10 @@ export default function PrestacaoContas() {
                 motoristaCPF: motorista.cpf,
                 placaCavalo: placaCavalo.toUpperCase(),
                 placaBau: placaBau.toUpperCase(),
-                dataInicio: dataInicioViagem,
-                dataFim: dataFimViagem,
+                dataInicio: dataInicioViagem.split('T')[0],
+                dataFim: dataFimViagem.split('T')[0],
+                dataInicioCompleta: dataInicioViagem,
+                dataFimCompleta: dataFimViagem,
                 diasDiaria: calculateDays(),
                 valorDiaria: valorDiaria,
                 totalDiarias: totalDiarias,
@@ -139,7 +183,8 @@ export default function PrestacaoContas() {
                 data: serverTimestamp(),
                 dataRegistro: serverTimestamp(),
                 origem: 'motorista_mobile',
-                tipo: 'prestacao_contas'
+                tipo: 'prestacao_contas',
+                viagensIds: selectedViagens
             };
 
             await addDoc(collection(db, 'despesas_brutas'), payload);
@@ -148,6 +193,7 @@ export default function PrestacaoContas() {
             setTimeout(() => {
                 setStep('identification');
                 setGastos([]);
+                setSelectedViagens([]);
                 setCpfInput('');
             }, 2000);
         } catch (error) {
@@ -250,21 +296,69 @@ export default function PrestacaoContas() {
                                 />
                             </label>
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <label className="flex flex-col gap-1.5">
-                                <span className="text-[9px] font-black text-text-muted uppercase tracking-widest ml-1">Início da Viagem</span>
+
+                        
+                        <div className="space-y-4 pt-2">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="material-symbols-outlined text-primary">hub</span>
+                                <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">Vincular às Viagens</span>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2">
+                                {cargas.length === 0 ? (
+                                    <p className="text-[10px] text-text-muted italic px-2">Nenhuma viagem ativa encontrada no seu nome.</p>
+                                ) : (
+                                    cargas.slice(0, 4).map(c => (
+                                        <button
+                                            key={c.id}
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedViagens(prev => 
+                                                    prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id]
+                                                );
+                                            }}
+                                            className={`p-4 rounded-2xl border flex items-center justify-between transition-all ${
+                                                selectedViagens.includes(c.id) 
+                                                    ? 'bg-primary/20 border-primary shadow-lg shadow-primary/10' 
+                                                    : 'bg-background border-border opacity-70'
+                                            }`}
+                                        >
+                                            <div className="flex flex-col items-start gap-1">
+                                                <span className="text-xs font-black uppercase text-text-primary">{c.codigoViagem}</span>
+                                                <span className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">
+                                                    {c.origem.split(',')[0]} → {c.destino.split(',')[0]}
+                                                </span>
+                                            </div>
+                                            <div className={`size-5 rounded-full border-2 flex items-center justify-center ${selectedViagens.includes(c.id) ? 'bg-primary border-primary text-background-dark' : 'border-border'}`}>
+                                                {selectedViagens.includes(c.id) && <span className="material-symbols-outlined text-[14px] font-black">check</span>}
+                                            </div>
+                                        </button>
+                                    ))
+                                )}
+                            </div>
+                            <p className="text-[9px] text-text-muted leading-relaxed px-1">Selecione para qual viagem você está enviando estas despesas.</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-4">
+                            <label className="flex flex-col gap-2">
+                                <span className="text-[10px] font-black text-text-muted uppercase tracking-widest ml-1 flex items-center gap-1">
+                                    <span className="material-symbols-outlined text-[14px]">flight_takeoff</span>
+                                    Saída da Viagem
+                                </span>
                                 <input
-                                    type="date"
-                                    className="bg-background border border-border rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-primary"
+                                    type="datetime-local"
+                                    className="w-full bg-background border border-border rounded-2xl px-4 py-4 text-sm font-bold outline-none focus:border-primary shadow-inner"
                                     value={dataInicioViagem}
                                     onChange={(e) => setDataInicioViagem(e.target.value)}
                                 />
                             </label>
-                            <label className="flex flex-col gap-1.5">
-                                <span className="text-[9px] font-black text-text-muted uppercase tracking-widest ml-1">Fim da Viagem</span>
+                            <label className="flex flex-col gap-2">
+                                <span className="text-[10px] font-black text-text-muted uppercase tracking-widest ml-1 flex items-center gap-1">
+                                    <span className="material-symbols-outlined text-[14px]">flight_land</span>
+                                    Chegada da Viagem
+                                </span>
                                 <input
-                                    type="date"
-                                    className="bg-background border border-border rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-primary"
+                                    type="datetime-local"
+                                    className="w-full bg-background border border-border rounded-2xl px-4 py-4 text-sm font-bold outline-none focus:border-primary shadow-inner"
                                     value={dataFimViagem}
                                     onChange={(e) => setDataFimViagem(e.target.value)}
                                 />
@@ -312,7 +406,7 @@ export default function PrestacaoContas() {
                                     <span className="text-[10px] font-black text-text-muted uppercase tracking-widest ml-1">Data Gasto</span>
                                     <input
                                         type="date"
-                                        className="w-full bg-background border border-border rounded-2xl px-4 py-3 text-xs font-bold outline-none"
+                                        className="w-full bg-background border border-border rounded-2xl px-4 py-3 text-sm font-bold outline-none"
                                         value={currentItem.data}
                                         onChange={(e) => setCurrentItem({ ...currentItem, data: e.target.value })}
                                     />
@@ -383,9 +477,14 @@ export default function PrestacaoContas() {
                                             )}
                                         </div>
                                     </div>
-                                    <button onClick={() => removeGasto(idx)} className="size-8 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center ml-4">
-                                        <span className="material-symbols-outlined text-lg">delete</span>
-                                    </button>
+                                    <div className="flex gap-2 ml-4">
+                                        <button onClick={() => editGasto(idx)} className="size-10 rounded-full bg-blue-500/10 text-blue-500 flex items-center justify-center active:scale-90 transition-transform">
+                                            <span className="material-symbols-outlined text-lg">edit</span>
+                                        </button>
+                                        <button onClick={() => removeGasto(idx)} className="size-10 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center active:scale-90 transition-transform">
+                                            <span className="material-symbols-outlined text-lg">delete</span>
+                                        </button>
+                                    </div>
                                 </div>
                             ))}
                         </div>

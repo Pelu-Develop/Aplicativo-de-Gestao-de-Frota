@@ -239,12 +239,20 @@ export default function MainDashboard() {
                         {despesas.slice(0, 5).map((d, i) => (
                             <div key={i} className="flex items-center gap-4 p-4 rounded-3xl bg-background border border-border/50 hover:border-primary/30 transition-all group">
                                 <div className="size-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center font-black group-hover:scale-110 transition-transform">
-                                    {d.motoristaNome?.charAt(0)}
+                                    {String(d.motoristaNome || '').charAt(0)}
                                 </div>
                                 <div className="flex-1">
                                     <p className="text-sm font-black text-text-primary">{d.motoristaNome}</p>
                                     <div className="flex items-center gap-2 text-[10px] text-text-muted font-bold uppercase tracking-wider">
-                                        <Clock size={12} /> {d.dataRegistro ? (typeof d.dataRegistro.toDate === 'function' ? d.dataRegistro.toDate().toLocaleDateString('pt-BR') : new Date(d.dataRegistro).toLocaleDateString('pt-BR')) : 'Pendente'}
+                                        <Clock size={12} /> {(() => {
+                                            if (!d.dataRegistro) return 'Pendente';
+                                            try {
+                                                const date = typeof d.dataRegistro.toDate === 'function' ? d.dataRegistro.toDate() : new Date(d.dataRegistro);
+                                                return isNaN(date.getTime()) ? 'Data Inválida' : date.toLocaleDateString('pt-BR');
+                                            } catch (e) {
+                                                return 'Data Inválida';
+                                            }
+                                        })()}
                                     </div>
                                 </div>
                                 <div className="text-right">

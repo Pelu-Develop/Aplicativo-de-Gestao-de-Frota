@@ -151,6 +151,23 @@ export default function Login() {
                         </button>
                     </form>
 
+                    <div className="w-full h-px bg-border-dark my-8 relative">
+                        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-surface-dark px-3 text-[10px] uppercase font-black text-text-muted tracking-[0.2em]">Ou Acesso Rápido</span>
+                    </div>
+
+                    <button 
+                        onClick={() => navigate('/prestacao-contas')}
+                        className="w-full py-4 border-2 border-primary/20 hover:border-primary/50 text-white rounded-2xl flex items-center justify-center gap-3 group transition-all"
+                    >
+                        <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                            <span className="material-symbols-outlined">local_shipping</span>
+                        </div>
+                        <div className="text-left">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-primary leading-none">Sou Motorista</p>
+                            <p className="text-xs font-bold text-slate-400">Prestação de Contas (Acerto)</p>
+                        </div>
+                        <span className="material-symbols-outlined ml-auto mr-4 text-text-muted group-hover:translate-x-1 transition-transform">arrow_forward_ios</span>
+                    </button>
                 </div>
             </div>
         </div>
