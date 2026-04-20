@@ -31,20 +31,27 @@ const CAVALO_SUBTYPES = ['Toco', 'Truck', 'Bitruck', 'Carreta', 'LS', 'Rodotrem'
 export default function Veiculos() {
     const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
     const [loading, setLoading] = useState(true);
-    const [currentPage, setCurrentPage] = useState(1);
+    const [currentPage] = useState(1);
     const pageSize = 10;
 
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterStatus, setFilterStatus] = useState<'todos' | 'ativo' | 'inativo'>('todos');
+    const [filterStatus] = useState<'todos' | 'ativo' | 'inativo'>('todos');
 
     const [isFormOpen, setIsFormOpen] = useState(false);
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<{
+        placa: string;
+        tipo: 'cavalo' | 'bau';
+        subTipo: string;
+        validadeTacografo: string;
+        validadeLicenciamento: string;
+        status: 'ativo' | 'inativo';
+    }>({
         placa: '',
-        tipo: 'cavalo' as 'cavalo' | 'bau',
+        tipo: 'cavalo',
         subTipo: '',
         validadeTacografo: '',
         validadeLicenciamento: '',
-        status: 'ativo' as 'ativo' | 'inativo'
+        status: 'ativo'
     });
 
     const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -161,7 +168,7 @@ export default function Veiculos() {
             
             // Remove tacografo if it's a bau
             if (formData.tipo === 'bau') {
-                delete payload.validadeTacografo;
+                delete (payload as any).validadeTacografo;
             }
 
             if (editingId) {

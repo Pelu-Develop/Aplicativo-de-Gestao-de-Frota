@@ -193,14 +193,6 @@ export default function Despesas() {
         }
     };
 
-    const toggleViagem = (viagemId: string) => {
-        const current = formData.viagensIds || [];
-        if (current.includes(viagemId)) {
-            setFormData({ ...formData, viagensIds: current.filter(id => id !== viagemId) });
-        } else {
-            setFormData({ ...formData, viagensIds: [...current, viagemId] });
-        }
-    };
 
     const calculateDiarias = () => {
         if (!formData.dataInicio || !formData.dataFim) return 0;

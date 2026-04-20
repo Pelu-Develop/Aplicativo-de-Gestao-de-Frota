@@ -11,7 +11,7 @@ import {
     doc
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { maskCPF, maskPhone, maskPlate, formatCPFHidden } from '../utils/masks';
+import { maskCPF, maskPhone, formatCPFHidden } from '../utils/masks';
 
 interface Motorista {
     id: string;
@@ -34,7 +34,6 @@ interface VeiculoRef {
     tipo: 'cavalo' | 'bau';
 }
 
-const BAU_OPTIONS = ['80m³', '90m³', '100m³', '110m³', '120m³', 'Sider', 'Grade Baixa', 'Prancha'];
 
 export default function Motoristas() {
     // List state
