@@ -20,12 +20,18 @@ interface Motorista {
     telefone: string;
     cnh: string;
     vinculo: 'propria' | 'terceirizado';
-    placaCavalo: string;
-    placaCarreta?: string;
-    tipoBau?: string;
     status: 'ativo' | 'inativo';
+    validadeCNH?: string;
+    cavaloPlaca?: string;
+    bauPlaca?: string;
     criadoEm: any;
     atualizadoEm: any;
+}
+
+interface VeiculoRef {
+    id: string;
+    placa: string;
+    tipo: 'cavalo' | 'bau';
 }
 
 const BAU_OPTIONS = ['80m³', '90m³', '100m³', '110m³', '120m³', 'Sider', 'Grade Baixa', 'Prancha'];
@@ -33,7 +39,9 @@ const BAU_OPTIONS = ['80m³', '90m³', '100m³', '110m³', '120m³', 'Sider', 'G
 export default function Motoristas() {
     // List state
     const [motoristas, setMotoristas] = useState<Motorista[]>([]);
+    const [veiculos, setVeiculos] = useState<VeiculoRef[]>([]);
     const [loading, setLoading] = useState(true);
+
     const [currentPage, setCurrentPage] = useState(1);
     const pageSize = 10;
 
@@ -50,9 +58,9 @@ export default function Motoristas() {
         telefone: '',
         cnh: '',
         vinculo: 'propria' as 'propria' | 'terceirizado',
-        placaCavalo: '',
-        placaCarreta: '',
-        tipoBau: ''
+        validadeCNH: '',
+        cavaloPlaca: '',
+        bauPlaca: ''
     });
 
     const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -81,6 +89,20 @@ export default function Motoristas() {
         return () => unsubscribe();
     }, []);
 
+    useEffect(() => {
+        const q = query(collection(db, 'veiculos'), orderBy('placa', 'asc'));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const list = snapshot.docs.map(doc => ({
+                id: doc.id,
+                placa: doc.data().placa,
+                tipo: doc.data().tipo
+            } as VeiculoRef));
+            setVeiculos(list);
+        });
+        return () => unsubscribe();
+    }, []);
+
+
     // Toast auto-hide
     useEffect(() => {
         if (toast) {
@@ -92,6 +114,29 @@ export default function Motoristas() {
     const showToast = (message: string, type: 'success' | 'error') => {
         setToast({ message, type });
     };
+
+    const checkExpirations = () => {
+        const expiring = motoristas.filter(m => {
+            if (!m.validadeCNH) return false;
+            const expiry = new Date(m.validadeCNH);
+            const today = new Date();
+            const oneMonthFromNow = new Date();
+            oneMonthFromNow.setMonth(today.getMonth() + 1);
+            return expiry <= oneMonthFromNow && m.status === 'ativo';
+        });
+
+        if (expiring.length > 0) {
+            const names = expiring.slice(0, 2).map(m => m.nome).join(', ');
+            const more = expiring.length > 2 ? ` e mais ${expiring.length - 2}` : '';
+            showToast(`Atenção: CNH vencendo/vencida para: ${names}${more}`, 'error');
+        }
+    };
+
+    useEffect(() => {
+        if (motoristas.length > 0 && !loading) {
+            checkExpirations();
+        }
+    }, [loading]);
 
     const validate = () => {
         const errors: Record<string, string> = {};
@@ -113,11 +158,6 @@ export default function Motoristas() {
             errors.cnh = 'CNH inválida (mínimo 9 dígitos)';
         }
 
-        const plateClean = formData.placaCavalo.replace(/[^a-zA-Z0-9]/g, '');
-        if (plateClean.length < 7) {
-            errors.placaCavalo = 'Placa incompleta';
-        }
-
         setFormErrors(errors);
         return Object.keys(errors).length === 0;
     };
@@ -126,7 +166,6 @@ export default function Motoristas() {
         let maskedValue = value;
         if (field === 'cpf') maskedValue = maskCPF(value);
         if (field === 'telefone') maskedValue = maskPhone(value);
-        if (field === 'placaCavalo' || field === 'placaCarreta') maskedValue = maskPlate(value);
 
         setFormData(prev => ({ ...prev, [field]: maskedValue }));
 
@@ -148,9 +187,9 @@ export default function Motoristas() {
             telefone: '',
             cnh: '',
             vinculo: 'propria',
-            placaCavalo: '',
-            placaCarreta: '',
-            tipoBau: ''
+            validadeCNH: '',
+            cavaloPlaca: '',
+            bauPlaca: ''
         });
         setFormErrors({});
         setIsFormOpen(true);
@@ -173,8 +212,6 @@ export default function Motoristas() {
                 const driverRef = doc(db, 'motoristas', editingId);
                 await updateDoc(driverRef, {
                     ...formData,
-                    placaCavalo: String(formData.placaCavalo || '').toUpperCase(),
-                    placaCarreta: String(formData.placaCarreta || '').toUpperCase(),
                     atualizadoEm: serverTimestamp()
                 });
                 showToast('Motorista atualizado com sucesso!', 'success');
@@ -182,8 +219,6 @@ export default function Motoristas() {
                 console.log("Adding new driver...");
                 await addDoc(collection(db, 'motoristas'), {
                     ...formData,
-                    placaCavalo: String(formData.placaCavalo || '').toUpperCase(),
-                    placaCarreta: String(formData.placaCarreta || '').toUpperCase(),
                     status: 'ativo',
                     criadoEm: serverTimestamp(),
                     atualizadoEm: serverTimestamp()
@@ -207,9 +242,9 @@ export default function Motoristas() {
             telefone: driver.telefone,
             cnh: driver.cnh,
             vinculo: driver.vinculo,
-            placaCavalo: driver.placaCavalo,
-            placaCarreta: driver.placaCarreta || '',
-            tipoBau: driver.tipoBau || ''
+            validadeCNH: driver.validadeCNH || '',
+            cavaloPlaca: driver.cavaloPlaca || '',
+            bauPlaca: driver.bauPlaca || ''
         });
         setFormErrors({});
         setIsFormOpen(true);
@@ -249,8 +284,7 @@ export default function Motoristas() {
 
     const filteredMotoristas = motoristas.filter(m => {
         const matchesSearch = (m.nome && m.nome.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (m.cpf && m.cpf.includes(searchTerm)) ||
-            (m.placaCavalo && m.placaCavalo.toLowerCase().includes(searchTerm.toLowerCase()));
+            (m.cpf && m.cpf.includes(searchTerm));
         const matchesStatus = filterStatus === 'todos' || m.status === filterStatus;
         const matchesVinculo = filterVinculo === 'todos' || m.vinculo === filterVinculo;
         return matchesSearch && matchesStatus && matchesVinculo;
@@ -349,8 +383,7 @@ export default function Motoristas() {
                             <tr className="bg-background-dark/50 border-b border-border">
                                 <th className="px-6 py-4 text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Motorista</th>
                                 <th className="px-6 py-4 text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Vínculo</th>
-                                <th className="px-6 py-4 text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Veículo (Cavalo)</th>
-                                <th className="px-6 py-4 text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Implemento (Baú)</th>
+                                <th className="px-6 py-4 text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Veículo Alocado</th>
                                 <th className="px-6 py-4 text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Contatos</th>
                                 <th className="px-6 py-4 text-[10px] font-black text-text-muted uppercase tracking-[0.2em] text-center">Status</th>
                                 <th className="px-6 py-4 text-[10px] font-black text-text-muted uppercase tracking-[0.2em] text-right">Ações</th>
@@ -404,15 +437,15 @@ export default function Motoristas() {
                                             </span>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <div className="flex items-center gap-2 text-text-primary">
-                                                <span className="material-symbols-outlined text-[16px] text-primary">local_shipping</span>
-                                                <span className="font-black text-xs lg:text-sm uppercase tracking-widest">{driver.placaCavalo}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-2 text-text-primary min-w-0">
-                                                <span className="material-symbols-outlined text-[16px] text-primary">rv_hookup</span>
-                                                <span className="font-bold text-xs truncate max-w-[150px]">{driver.tipoBau || driver.placaCarreta || 'N/A'}</span>
+                                            <div className="flex flex-col gap-1">
+                                                <div className="flex items-center gap-2 text-text-primary">
+                                                    <span className="material-symbols-outlined text-[14px] text-primary">local_shipping</span>
+                                                    <span className="text-[11px] font-black uppercase tracking-widest">{driver.cavaloPlaca || '---'}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-text-muted">
+                                                    <span className="material-symbols-outlined text-[14px]">rv_hookup</span>
+                                                    <span className="text-[10px] font-bold uppercase">{driver.bauPlaca || '---'}</span>
+                                                </div>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
@@ -424,6 +457,21 @@ export default function Motoristas() {
                                                 <div className="flex items-center gap-2 text-text-muted">
                                                     <span className="material-symbols-outlined text-[14px]">badge</span>
                                                     <span className="text-[10px] font-medium tracking-tight">CNH: {driver.cnh}</span>
+                                                    {driver.validadeCNH && (
+                                                        <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md border ${
+                                                            new Date(driver.validadeCNH) < new Date() 
+                                                            ? 'bg-red-500/10 text-red-500 border-red-500/20' 
+                                                            : new Date(driver.validadeCNH) <= new Date(new Date().setMonth(new Date().getMonth() + 1))
+                                                            ? 'bg-amber-500/10 text-amber-500 border-amber-500/20'
+                                                            : 'bg-green-500/10 text-green-500 border-green-500/20'
+                                                        }`}>
+                                                            {new Date(driver.validadeCNH) <= new Date(new Date().setMonth(new Date().getMonth() + 1)) && (
+                                                                <span className="material-symbols-outlined text-[10px] mr-1">warning</span>
+                                                            )}
+                                                            {new Date(driver.validadeCNH) < new Date() ? 'Vencida ' : 'Vence '}
+                                                            {new Date(driver.validadeCNH).toLocaleDateString('pt-BR')}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                         </td>
@@ -591,6 +639,18 @@ export default function Motoristas() {
                                     {formErrors.cnh && <span className="text-red-500 text-[10px] mt-1 ml-1 font-bold italic">{formErrors.cnh}</span>}
                                 </label>
 
+                                <label className="flex flex-col">
+                                    <span className="text-text-secondary text-[11px] font-black uppercase tracking-widest mb-2 ml-1">Validade CNH</span>
+                                    <input
+                                        type="date"
+                                        className="w-full bg-background border border-border rounded-2xl px-5 py-3 text-xs lg:text-sm text-text-primary focus:outline-none focus:border-primary/50 transition-all"
+                                        value={formData.validadeCNH}
+                                        onChange={(e) => handleInputChange('validadeCNH', e.target.value)}
+                                        disabled={submitting}
+                                    />
+                                </label>
+
+
                                 <div className="flex flex-col">
                                     <span className="text-text-secondary text-[11px] font-black uppercase tracking-widest mb-2 ml-1">Vínculo</span>
                                     <div className="flex gap-2 h-[44px]">
@@ -616,39 +676,31 @@ export default function Motoristas() {
                                 <div className="md:col-span-2 h-px bg-border my-2"></div>
 
                                 <label className="flex flex-col">
-                                    <span className="text-text-secondary text-[11px] font-black uppercase tracking-widest mb-2 ml-1">Placa Cavalo</span>
-                                    <input
-                                        className={`w-full bg-background border ${formErrors.placaCavalo ? 'border-red-500' : 'border-border'} rounded-2xl px-5 py-3 text-[14px] font-black tracking-widest text-text-primary focus:outline-none focus:border-primary/50 transition-all uppercase`}
-                                        placeholder="BRA-2E19"
-                                        value={formData.placaCavalo}
-                                        onChange={(e) => handleInputChange('placaCavalo', e.target.value)}
+                                    <span className="text-text-secondary text-[11px] font-black uppercase tracking-widest mb-2 ml-1">Cavalo (Trator)</span>
+                                    <select 
+                                        className="w-full bg-background border border-border rounded-2xl px-5 py-3 text-xs lg:text-sm text-text-primary focus:outline-none focus:border-primary/50 transition-all appearance-none cursor-pointer"
+                                        value={formData.cavaloPlaca}
+                                        onChange={(e) => setFormData({...formData, cavaloPlaca: e.target.value})}
                                         disabled={submitting}
-                                    />
-                                    {formErrors.placaCavalo && <span className="text-red-500 text-[10px] mt-1 ml-1 font-bold italic">{formErrors.placaCavalo}</span>}
+                                    >
+                                        <option value="">Selecione o veículo...</option>
+                                        {veiculos.filter(v => v.tipo === 'cavalo').map(v => (
+                                            <option key={v.id} value={v.placa}>{v.placa}</option>
+                                        ))}
+                                    </select>
                                 </label>
 
                                 <label className="flex flex-col">
-                                    <span className="text-text-secondary text-[11px] font-black uppercase tracking-widest mb-2 ml-1">Placa Carreta</span>
-                                    <input
-                                        className="w-full bg-background border border-border rounded-2xl px-5 py-3 text-[14px] font-black tracking-widest text-text-primary focus:outline-none focus:border-primary/50 transition-all uppercase"
-                                        placeholder="EXA-4H22"
-                                        value={formData.placaCarreta}
-                                        onChange={(e) => handleInputChange('placaCarreta', e.target.value)}
-                                        disabled={submitting}
-                                    />
-                                </label>
-
-                                <label className="flex flex-col md:col-span-2">
-                                    <span className="text-text-secondary text-[11px] font-black uppercase tracking-widest mb-2 ml-1">Configuração de Baú</span>
-                                    <select
+                                    <span className="text-text-secondary text-[11px] font-black uppercase tracking-widest mb-2 ml-1">Baú / Implemento</span>
+                                    <select 
                                         className="w-full bg-background border border-border rounded-2xl px-5 py-3 text-xs lg:text-sm text-text-primary focus:outline-none focus:border-primary/50 transition-all appearance-none cursor-pointer"
-                                        value={formData.tipoBau}
-                                        onChange={(e) => handleInputChange('tipoBau', e.target.value)}
+                                        value={formData.bauPlaca}
+                                        onChange={(e) => setFormData({...formData, bauPlaca: e.target.value})}
                                         disabled={submitting}
                                     >
-                                        <option value="">Selecione o implemento</option>
-                                        {BAU_OPTIONS.map(opt => (
-                                            <option key={opt} value={opt}>{opt}</option>
+                                        <option value="">Selecione o implemento...</option>
+                                        {veiculos.filter(v => v.tipo === 'bau').map(v => (
+                                            <option key={v.id} value={v.placa}>{v.placa}</option>
                                         ))}
                                     </select>
                                 </label>
@@ -721,9 +773,9 @@ export default function Motoristas() {
                                 <DetailItem label="CPF" value={viewingDriver.cpf} icon="fingerprint" />
                                 <DetailItem label="CNH" value={viewingDriver.cnh} icon="badge" />
                                 <DetailItem label="Telefone" value={viewingDriver.telefone} icon="call" />
-                                <DetailItem label="Placa Cavalo" value={viewingDriver.placaCavalo} icon="local_shipping" primary />
-                                <DetailItem label="Placa Carreta" value={viewingDriver.placaCarreta || '---'} icon="rv_hookup" />
-                                <DetailItem label="Baú / Capacidade" value={viewingDriver.tipoBau || 'Configuração Padrão'} icon="conveyor_belt" />
+                                <DetailItem label="Validade CNH" value={viewingDriver.validadeCNH ? new Date(viewingDriver.validadeCNH).toLocaleDateString('pt-BR') : '---'} icon="calendar_today" />
+                                <DetailItem label="Cavalo" value={viewingDriver.cavaloPlaca || 'Não alocado'} icon="local_shipping" />
+                                <DetailItem label="Baú" value={viewingDriver.bauPlaca || 'Não alocado'} icon="rv_hookup" />
                             </div>
                         </div>
                         <div className="p-8 bg-surface border-t border-border flex gap-3">

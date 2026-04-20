@@ -10,6 +10,8 @@ interface Cliente {
     cnpjCpf: string;
     cidade: string;
     observacao: string;
+    percentualAdiantamentoPadrao?: number;
+    formaPagamento?: string;
     dataRegistro?: any;
 }
 
@@ -25,7 +27,9 @@ export default function Clientes() {
         operador: '',
         cnpjCpf: '',
         cidade: '',
-        observacao: ''
+        observacao: '',
+        percentualAdiantamentoPadrao: 0,
+        formaPagamento: ''
     });
     const [submitting, setSubmitting] = useState(false);
     const [search, setSearch] = useState('');
@@ -45,7 +49,7 @@ export default function Clientes() {
 
     const openCreateModal = () => {
         setEditingId(null);
-        setFormData({ nome: '', contato: '', operador: '', cnpjCpf: '', cidade: '', observacao: '' });
+        setFormData({ nome: '', contato: '', operador: '', cnpjCpf: '', cidade: '', observacao: '', percentualAdiantamentoPadrao: 0, formaPagamento: '' });
         setIsFormOpen(true);
     };
 
@@ -57,7 +61,9 @@ export default function Clientes() {
             operador: c.operador || '',
             cnpjCpf: c.cnpjCpf || '',
             cidade: c.cidade || '',
-            observacao: c.observacao || ''
+            observacao: c.observacao || '',
+            percentualAdiantamentoPadrao: c.percentualAdiantamentoPadrao || 0,
+            formaPagamento: c.formaPagamento || ''
         });
         setIsFormOpen(true);
     };
@@ -217,6 +223,17 @@ export default function Clientes() {
                                 <label className="flex flex-col gap-2">
                                     <span className="text-[10px] font-black text-text-muted uppercase tracking-widest ml-1">Cidade / Estado</span>
                                     <input className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm" placeholder="Ex: São Paulo, SP" value={formData.cidade} onChange={(e) => setFormData({...formData, cidade: e.target.value})} />
+                                </label>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <label className="flex flex-col gap-2">
+                                    <span className="text-[10px] font-black text-text-muted uppercase tracking-widest ml-1">% Adiantamento Padrão</span>
+                                    <input type="number" step="0.01" className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm" placeholder="Ex: 30" value={formData.percentualAdiantamentoPadrao || ''} onChange={(e) => setFormData({...formData, percentualAdiantamentoPadrao: parseFloat(e.target.value) || 0})} />
+                                </label>
+                                <label className="flex flex-col gap-2">
+                                    <span className="text-[10px] font-black text-text-muted uppercase tracking-widest ml-1">Forma de Pagamento Padrão</span>
+                                    <input type="text" className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm" placeholder="Ex: Pix, Pamcard..." value={formData.formaPagamento} onChange={(e) => setFormData({...formData, formaPagamento: e.target.value})} />
                                 </label>
                             </div>
 

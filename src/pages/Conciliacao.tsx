@@ -7,6 +7,7 @@ import {
     doc,
     addDoc,
     deleteDoc,
+    updateDoc,
     serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -76,7 +77,7 @@ export default function Conciliacao() {
 
     // Fetch Raw/Imported Expenses (Simulating a collection 'despesas_brutas')
     useEffect(() => {
-        const q = query(collection(db, 'despesas_brutas')); // You can change this collection name as needed
+        const q = query(collection(db, 'despesas_brutas'), where('status', '==', 'pendente')); 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const list = snapshot.docs.map(doc => ({
                 id: doc.id,
@@ -157,6 +158,24 @@ export default function Conciliacao() {
             setIsEditing(false);
         } catch (error) {
             console.error(error);
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleReject = async (bruta: DespesaBruta) => {
+        if (!window.confirm('Deseja realmente devolver esta despesa para o motorista? Ela sairá da fila de conciliação e voltará para o formulário dele.')) return;
+        
+        setSubmitting(true);
+        try {
+            await updateDoc(doc(db, 'despesas_brutas', bruta.id), {
+                status: 'devolvido',
+                dataDevolucao: serverTimestamp()
+            });
+            setViewingItem(null);
+        } catch (error) {
+            console.error(error);
+            alert('Erro ao devolver despesa.');
         } finally {
             setSubmitting(false);
         }
@@ -273,6 +292,13 @@ export default function Conciliacao() {
                                                         <span className="material-symbols-outlined text-[18px]">visibility</span>
                                                     </button>
                                                     <button
+                                                        onClick={() => handleReject(b)}
+                                                        className="bg-background border border-border size-8 rounded-lg flex items-center justify-center text-text-muted hover:text-red-500 transition-all shadow-sm"
+                                                        title="Rejeitar / Voltar"
+                                                    >
+                                                        <span className="material-symbols-outlined text-[18px]">undo</span>
+                                                    </button>
+                                                    <button
                                                         onClick={() => handleMatch(b)}
                                                         disabled={submitting}
                                                         className="bg-primary text-background-dark px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all shadow-md flex items-center gap-1.5"
@@ -380,7 +406,7 @@ export default function Conciliacao() {
                                                     }`}
                                                 >
                                                     <span>{c.codigoViagem}</span>
-                                                    <span className="opacity-50 lowercase font-medium">{c.origem.split(',')[0]} → {c.destino.split(',')[0]}</span>
+                                                    <span className="opacity-50 lowercase font-medium">{(c.origem || '').split(',')[0]} → {(c.destino || '').split(',')[0]}</span>
                                                 </button>
                                             ))}
                                     </div>

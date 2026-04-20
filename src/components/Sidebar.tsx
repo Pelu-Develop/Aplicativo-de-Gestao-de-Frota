@@ -78,6 +78,11 @@ export default function Sidebar() {
                         <span className="material-symbols-outlined text-[18px]">storefront</span>
                         <span className="text-xs font-semibold">Clientes</span>
                     </Link>
+                    <Link to="/veiculos" className={`flex items-center gap-3 px-3 py-2 rounded-lg group transition-colors ${isActive('/veiculos') ? 'bg-primary/10 text-primary border border-primary/20' : 'text-text-muted hover:bg-surface/80 hover:text-text-primary'}`}>
+                        <span className="material-symbols-outlined text-[18px]">minor_crash</span>
+                        <span className="text-xs font-semibold">Veículos</span>
+                    </Link>
+
                 </div>
             </nav>
             <div className="p-4 border-t border-border">

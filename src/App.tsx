@@ -16,6 +16,8 @@ import Perfil from './pages/Perfil';
 import Login from './pages/Login';
 import PrestacaoContas from './pages/PrestacaoContas';
 import Clientes from './pages/Clientes';
+import Veiculos from './pages/Veiculos';
+
 
 function App() {
   return (
@@ -37,6 +39,8 @@ function App() {
               <Route path="comissoes" element={<Comissoes />} />
               <Route path="despesas" element={<Despesas />} />
               <Route path="clientes" element={<Clientes />} />
+              <Route path="veiculos" element={<Veiculos />} />
+
               <Route path="conciliacao" element={<Conciliacao />} />
               <Route path="perfil" element={<Perfil />} />
             </Route>

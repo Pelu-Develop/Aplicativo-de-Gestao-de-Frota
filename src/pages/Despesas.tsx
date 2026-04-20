@@ -302,6 +302,41 @@ export default function Despesas() {
         }
     };
 
+    const handleUndoConciliation = async (e: React.MouseEvent, despesa: Despesa) => {
+        e.stopPropagation();
+        if (!window.confirm('Deseja realmente desfazer a conciliação desta despesa? Ela voltará para a fila de conciliação bruta.')) return;
+        
+        setSubmitting(true);
+        try {
+            await addDoc(collection(db, 'despesas_brutas'), {
+                motoristaNomeOriginal: despesa.motoristaNome,
+                motoristaNome: despesa.motoristaNome,
+                motoristaId: despesa.motoristaId || null,
+                motoristaCPF: despesa.motoristaCPF || '',
+                placaCavalo: despesa.placaCavalo,
+                placaBau: despesa.placaBau,
+                items: despesa.items,
+                valorTotal: despesa.valorTotal,
+                dataInicio: despesa.dataInicio,
+                dataFim: despesa.dataFim,
+                diasDiaria: despesa.diasDiaria,
+                valorDiaria: despesa.valorDiaria,
+                data: serverTimestamp(),
+                tipo: 'desfeita_da_frota',
+                origem: 'reversao_manual',
+                status: 'pendente'
+            });
+
+            await deleteDoc(doc(db, 'despesas_frota', despesa.id));
+            showToast('Conciliação desfeita com sucesso!', 'success');
+        } catch (error) {
+            console.error(error);
+            showToast('Erro ao desfazer conciliação.', 'error');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -617,13 +652,20 @@ export default function Despesas() {
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex justify-end items-center gap-2">
-                                                <button
-                                                    onClick={(e) => handleToggleStatus(e, d)}
-                                                    className={`size-10 rounded-xl bg-background border flex items-center justify-center transition-all ${d.status === 'finalizado' ? 'text-orange-500 border-orange-500/30 hover:bg-orange-500/10' : 'text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/10'}`}
-                                                    title={d.status === 'finalizado' ? 'Reabrir Acerto' : 'Finalizar Acerto'}
-                                                >
-                                                    <span className="material-symbols-outlined text-[20px]">{d.status === 'finalizado' ? 'lock_open' : 'lock'}</span>
-                                                </button>
+                                                    <button
+                                                        onClick={(e) => handleToggleStatus(e, d)}
+                                                        className={`size-10 rounded-xl bg-background border flex items-center justify-center transition-all ${d.status === 'finalizado' ? 'text-orange-500 border-orange-500/30 hover:bg-orange-500/10' : 'text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/10'}`}
+                                                        title={d.status === 'finalizado' ? 'Reabrir Acerto' : 'Finalizar Acerto'}
+                                                    >
+                                                        <span className="material-symbols-outlined text-[20px]">{d.status === 'finalizado' ? 'lock_open' : 'lock'}</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => handleUndoConciliation(e, d)}
+                                                        className="size-10 rounded-xl bg-background border border-border flex items-center justify-center text-text-muted hover:text-orange-500 hover:border-orange-500/30 transition-all"
+                                                        title="Desfazer Conciliação (Voltar para Brutas)"
+                                                    >
+                                                        <span className="material-symbols-outlined text-[20px]">undo</span>
+                                                    </button>
                                                 {d.status === 'finalizado' && <span className="material-symbols-outlined text-[14px] text-green-500/50">lock</span>}
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); setPrintingDespesa(d); }}
