@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import {
     collection,
     addDoc,
@@ -55,7 +55,16 @@ interface Despesa {
 
 const CATEGORIAS = ['Combustível', 'Peças', 'Serviços', 'Lavagem', 'Descarga', 'Estacionamento', 'Transporte', 'Borracharia', 'Outros'];
 
+// Helper para converter Timestamp ou string em Date
+function toDate(val: any): Date | null {
+    if (!val) return null;
+    if (typeof val.toDate === 'function') return val.toDate();
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d;
+}
+
 export default function Despesas() {
+    const location = useLocation();
     const [despesas, setDespesas] = useState<Despesa[]>([]);
     const [motoristasProprios, setMotoristasProprios] = useState<Motorista[]>([]);
     const [todasViagens, setTodasViagens] = useState<any[]>([]);
@@ -92,7 +101,8 @@ export default function Despesas() {
         placa: '',
         dataInicio: '',
         dataFim: '',
-        viagemId: ''
+        viagemId: '',
+        status: ''
     });
 
     const [submitting, setSubmitting] = useState(false);
@@ -128,6 +138,14 @@ export default function Despesas() {
         });
         return () => unsubscribe();
     }, []);
+
+    useEffect(() => {
+        if (location.state && location.state.searchTerm) {
+            setFilters(prev => ({ ...prev, nome: location.state.searchTerm }));
+            // Limpa o estado para não re-filtrar se o usuário navegar de volta
+            window.history.replaceState({}, document.title);
+        }
+    }, [location]);
 
     // Fetch Global Config
     useEffect(() => {
@@ -449,21 +467,22 @@ export default function Despesas() {
             (d.placaBau && d.placaBau.toLowerCase().includes(filters.placa.toLowerCase()));
 
         let matchPeriodo = true;
-        const dInicio = d.dataInicio ? new Date(d.dataInicio.includes('T') ? d.dataInicio : d.dataInicio + 'T12:00:00') : null;
-        const dFim = d.dataFim ? new Date(d.dataFim.includes('T') ? d.dataFim : d.dataFim + 'T12:00:00') : null;
+        const dInicio = toDate(d.dataInicio);
+        const dFim = toDate(d.dataFim);
 
         if (filters.dataInicio) {
-            const fInicio = new Date(filters.dataInicio.includes('T') ? filters.dataInicio : filters.dataInicio + 'T12:00:00');
+            const fInicio = new Date(filters.dataInicio + 'T00:00:00');
             if (dInicio && dInicio < fInicio) matchPeriodo = false;
         }
         if (filters.dataFim) {
-            const fFim = new Date(filters.dataFim.includes('T') ? filters.dataFim : filters.dataFim + 'T12:00:00');
+            const fFim = new Date(filters.dataFim + 'T23:59:59');
             if (dFim && dFim > fFim) matchPeriodo = false;
         }
 
         const matchViagem = !filters.viagemId || (Array.isArray(d.viagensIds) && d.viagensIds.some(id => id && String(id).toLowerCase().includes(filters.viagemId.toLowerCase())));
+        const matchStatus = !filters.status || d.status === filters.status;
 
-        return matchNome && matchPlaca && matchPeriodo && matchViagem;
+        return matchNome && matchPlaca && matchPeriodo && matchViagem && matchStatus;
     });
 
     // Autocomplete Suggestions
@@ -565,13 +584,38 @@ export default function Despesas() {
                 </div>
                 <div className="flex items-end flex-1 min-w-[100px]">
                     <button
-                        onClick={() => setFilters({ nome: '', placa: '', dataInicio: '', dataFim: '', viagemId: '' })}
+                        onClick={() => setFilters({ nome: '', placa: '', dataInicio: '', dataFim: '', viagemId: '', status: '' })}
                         className="w-full h-[34px] bg-background-dark border border-border text-text-muted hover:text-primary hover:border-primary/50 rounded-xl flex items-center justify-center gap-2 transition-colors text-[10px] font-black uppercase tracking-widest"
                     >
                         <span className="material-symbols-outlined text-sm">filter_list_off</span>
                         Limpar
                     </button>
                 </div>
+            </div>
+
+            {/* Status Tabs */}
+            <div className="flex flex-wrap items-center gap-2 mb-6 bg-surface border border-border p-1.5 rounded-2xl w-fit shadow-sm">
+                <button
+                    onClick={() => setFilters({ ...filters, status: '' })}
+                    className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${filters.status === '' ? 'bg-primary text-background-dark shadow-lg shadow-primary/20 scale-105' : 'text-text-muted hover:bg-border/30'}`}
+                >
+                    <span className="material-symbols-outlined text-[18px]">list</span>
+                    Todos
+                </button>
+                <button
+                    onClick={() => setFilters({ ...filters, status: 'pendente' })}
+                    className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${filters.status === 'pendente' ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20 scale-105' : 'text-text-muted hover:bg-border/30'}`}
+                >
+                    <span className="material-symbols-outlined text-[18px]">pending_actions</span>
+                    Pendentes
+                </button>
+                <button
+                    onClick={() => setFilters({ ...filters, status: 'finalizado' })}
+                    className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${filters.status === 'finalizado' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 scale-105' : 'text-text-muted hover:bg-border/30'}`}
+                >
+                    <span className="material-symbols-outlined text-[18px]">task_alt</span>
+                    Finalizados
+                </button>
             </div>
 
             <div className="bg-surface border border-border rounded-3xl overflow-hidden shadow-xl">

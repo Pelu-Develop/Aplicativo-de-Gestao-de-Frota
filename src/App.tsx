@@ -16,6 +16,7 @@ import Login from './pages/Login';
 import PrestacaoContas from './pages/PrestacaoContas';
 import Clientes from './pages/Clientes';
 import Veiculos from './pages/Veiculos';
+import ResumoDia from './pages/ResumoDia';
 
 
 function App() {
@@ -35,6 +36,7 @@ function App() {
               <Route path="dashboards/resultado" element={<ProfitabilityDashboard />} />
               <Route path="motoristas" element={<Motoristas />} />
               <Route path="cargas" element={<ControleCargas />} />
+              <Route path="resumo-dia" element={<ResumoDia />} />
               <Route path="comissoes" element={<Comissoes />} />
               <Route path="despesas" element={<Despesas />} />
               <Route path="clientes" element={<Clientes />} />

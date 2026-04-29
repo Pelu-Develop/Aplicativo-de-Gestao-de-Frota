@@ -1,5 +1,5 @@
 import { collection, query, onSnapshot, updateDoc, doc } from 'firebase/firestore';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { db } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -35,6 +35,7 @@ interface Carga {
     percentualAdiantamento?: number;
     adiantamentoPago?: boolean;
     saldoPago?: boolean;
+    rotas?: any[];
 }
 
 interface Despesa {
@@ -58,6 +59,7 @@ interface Operacao {
     viagensVinculadas: Carga[];
     freteRealizado: number;
     fretePendente: number;
+    freteFaturado: number;
     despesaCombustivel: number;
     despesaMotorista: number;
     lucroLiquido: number;
@@ -138,11 +140,20 @@ export default function ProfitabilityDashboard() {
             fretePendente += (total - realizadoParaEstaCarga);
         });
 
-        const despesaCombustivel = linkedCargas.reduce((acc, curr) => acc + (Number(curr.valorTotalCombustivel) || 0), 0);
+        const freteFaturado = linkedCargas.reduce((acc, curr) => acc + (Number(curr.valorFrete) || 0), 0);
+        
+        const despesaCombustivel = linkedCargas.reduce((acc, curr) => {
+            // Check root field first
+            if (curr.valorTotalCombustivel) return acc + Number(curr.valorTotalCombustivel);
+            // Fallback to summing routes
+            const fuelFromRoutes = curr.rotas?.reduce((sum: number, r: any) => sum + ((Number(r.litrosAbastecidos) || 0) * (Number(r.valorLitroCombustivel) || 0)), 0) || 0;
+            return acc + fuelFromRoutes;
+        }, 0);
+
         const despesaMotorista = Number(d.valorTotal) || 0;
 
-        const lucroLiquido = freteRealizado - despesaCombustivel - despesaMotorista;
-        const margem = freteRealizado > 0 ? (lucroLiquido / freteRealizado) * 100 : 0;
+        const lucroLiquido = freteFaturado - despesaCombustivel - despesaMotorista;
+        const margem = freteFaturado > 0 ? (lucroLiquido / freteFaturado) * 100 : 0;
 
         return {
             id: d.id,
@@ -154,6 +165,7 @@ export default function ProfitabilityDashboard() {
             viagensVinculadas: linkedCargas,
             freteRealizado,
             fretePendente,
+            freteFaturado,
             despesaCombustivel,
             despesaMotorista,
             lucroLiquido,
@@ -183,7 +195,7 @@ export default function ProfitabilityDashboard() {
         return matchTermo && matchCliente && matchOrigem && matchDestino && matchStatus && matchData;
     });
     
-    const freteTotalGlobal = filteredOps.reduce((acc, curr) => acc + curr.freteRealizado, 0);
+    const freteTotalGlobal = filteredOps.reduce((acc, curr) => acc + curr.freteFaturado, 0);
     const combustivelGlobal = filteredOps.reduce((acc, curr) => acc + curr.despesaCombustivel, 0);
     const motoristaGlobal = filteredOps.reduce((acc, curr) => acc + curr.despesaMotorista, 0);
     const lucroLiquidoGlobal = filteredOps.reduce((acc, curr) => acc + curr.lucroLiquido, 0);
@@ -194,8 +206,8 @@ export default function ProfitabilityDashboard() {
         .sort((a, b) => b.lucroLiquido - a.lucroLiquido)
         .slice(0, 8)
         .map(op => ({
-            name: op.motoristaNome.split(' ')[0],
-            Frete: op.freteRealizado,
+            name: (op.motoristaNome || 'Motorista').split(' ')[0],
+            Frete: op.freteFaturado,
             Custos: op.despesaCombustivel + op.despesaMotorista,
             Lucro: op.lucroLiquido
         }));
@@ -247,7 +259,7 @@ export default function ProfitabilityDashboard() {
             if (!acc[clienteKey]) {
                 acc[clienteKey] = { nome: clienteKey, totalFrete: 0, totalLucro: 0, viagens: 0 };
             }
-            const ratio = (Number(v.valorFrete) || 0) / (op.freteRealizado || 1);
+            const ratio = (Number(v.valorFrete) || 0) / (op.freteFaturado || 1);
             acc[clienteKey].totalFrete += (Number(v.valorFrete) || 0);
             acc[clienteKey].totalLucro += (op.lucroLiquido * ratio);
             acc[clienteKey].viagens += 1;
@@ -265,7 +277,7 @@ export default function ProfitabilityDashboard() {
             if (!acc[rota]) {
                 acc[rota] = { rota, totalFrete: 0, totalLucro: 0, viagens: 0 };
             }
-            const ratio = (Number(v.valorFrete) || 0) / (op.freteRealizado || 1);
+            const ratio = (Number(v.valorFrete) || 0) / (op.freteFaturado || 1);
             acc[rota].totalFrete += (Number(v.valorFrete) || 0);
             acc[rota].totalLucro += (op.lucroLiquido * ratio);
             acc[rota].viagens += 1;
@@ -644,7 +656,7 @@ export default function ProfitabilityDashboard() {
                                 <th className="px-8 py-4">Operação e Motorista</th>
                                 <th className="px-8 py-4">Período</th>
                                 <th className="px-8 py-4 text-center">Viagens</th>
-                                <th className="px-8 py-4 text-emerald-500 text-right">Frete Realizado</th>
+                                <th className="px-8 py-4 text-emerald-500 text-right">Frete Faturado</th>
                                 <th className="px-8 py-4 text-orange-500 text-right">Combustível</th>
                                 <th className="px-8 py-4 text-blue-500 text-right">Acerto Mot.</th>
                                 <th className="px-8 py-4 text-primary text-right">Lucro Líquido</th>
@@ -688,7 +700,7 @@ export default function ProfitabilityDashboard() {
                                     </td>
                                     <td className="px-8 py-4 text-right">
                                         <div className="flex flex-col items-end">
-                                            <span className="text-sm font-black text-emerald-500/90 whitespace-nowrap">R$ {op.freteRealizado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                            <span className="text-sm font-black text-emerald-500/90 whitespace-nowrap">R$ {op.freteFaturado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                                             {op.fretePendente > 0 && <span className="text-[9px] text-text-muted font-bold tracking-tighter uppercase">Pendente: R$ {op.fretePendente.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>}
                                         </div>
                                     </td>
@@ -726,7 +738,7 @@ export default function ProfitabilityDashboard() {
                         <tr className="border-b-2 border-gray-300">
                             <th className="py-2 text-gray-600 uppercase">Motorista / Placa</th>
                             <th className="py-2 text-gray-600 uppercase">Período</th>
-                            <th className="py-2 text-gray-600 uppercase text-right">Frete Realizado</th>
+                            <th className="py-2 text-gray-600 uppercase text-right">Frete Faturado</th>
                             <th className="py-2 text-gray-600 uppercase text-right">Custos</th>
                             <th className="py-2 text-gray-600 uppercase text-right">Lucro Líquido</th>
                             <th className="py-2 text-gray-600 uppercase text-center">Margem</th>
@@ -737,7 +749,7 @@ export default function ProfitabilityDashboard() {
                             <tr key={op.id}>
                                 <td className="py-2 font-bold uppercase">{op.motoristaNome} ({op.placaCavalo})</td>
                                 <td className="py-2">{op.dataInicio} » {op.dataFim}</td>
-                                <td className="py-2 text-right">R$ {op.freteRealizado.toLocaleString('pt-BR')}</td>
+                                <td className="py-2 text-right">R$ {op.freteFaturado.toLocaleString('pt-BR')}</td>
                                 <td className="py-2 text-right">R$ {(op.despesaCombustivel + op.despesaMotorista).toLocaleString('pt-BR')}</td>
                                 <td className="py-2 text-right font-black">R$ {op.lucroLiquido.toLocaleString('pt-BR')}</td>
                                 <td className="py-2 text-center font-bold">{op.margem.toFixed(1)}%</td>
@@ -789,7 +801,7 @@ export default function ProfitabilityDashboard() {
                                 <div className="bg-background-dark/50 p-4 rounded-3xl border border-border">
                                     <p className="text-[8px] font-black text-text-muted uppercase tracking-widest mb-1">Frete Realizado</p>
                                     <h5 className="text-xl font-black text-emerald-500">
-                                        R$ {selectedOperacao.freteRealizado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                        R$ {selectedOperacao.freteFaturado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                     </h5>
                                     {selectedOperacao.fretePendente > 0 && (
                                         <p className="text-[9px] font-bold text-text-muted mt-1 italic">

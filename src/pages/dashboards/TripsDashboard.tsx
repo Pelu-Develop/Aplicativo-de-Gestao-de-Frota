@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { collection, query, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import {
@@ -21,36 +21,66 @@ import {
 } from 'lucide-react';
 
 export default function TripsDashboard() {
-    const [despesas, setDespesas] = useState<any[]>([]);
+    const [viagens, setViagens] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const q = query(collection(db, 'despesas_frota'));
+        const q = query(collection(db, 'cargas'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setDespesas(list);
+            setViagens(list);
             setLoading(false);
         });
         return () => unsubscribe();
     }, []);
 
-    const onRouteTrips = despesas.filter(d => d.status === 'pendente');
+    const onRouteTrips = viagens.filter(v => v.status === 'Em curso');
+    const finishedTrips = viagens.filter(v => v.status === 'Finalizado');
+    const problemTrips = viagens.filter(v => v.status === 'Problema');
 
-    const routeData = [
-        { name: 'SP → RJ', count: 12, efficiency: 95 },
-        { name: 'MG → ES', count: 8, efficiency: 88 },
-        { name: 'PR → SC', count: 15, efficiency: 92 },
-        { name: 'RS → MS', count: 5, efficiency: 85 },
-        { name: 'GO → DF', count: 10, efficiency: 94 },
-    ];
+    // Calculate Efficiency
+    const efficiency = viagens.length > 0 
+        ? ((finishedTrips.length / (viagens.length - onRouteTrips.length || 1)) * 100).toFixed(1)
+        : "0.0";
 
-    const timelineData = [
-        { date: '01/03', trips: 4 },
-        { date: '02/03', trips: 7 },
-        { date: '03/03', trips: 5 },
-        { date: '04/03', trips: 9 },
-        { date: '05/03', trips: 6 },
-    ];
+    // Top 5 Routes
+    const routeStats = useMemo(() => {
+        const stats: { [key: string]: { count: number, finished: number } } = {};
+        viagens.forEach(v => {
+            if (!v.origem || !v.destino) return;
+            const key = `${v.origem} → ${v.destino}`;
+            if (!stats[key]) stats[key] = { count: 0, finished: 0 };
+            stats[key].count++;
+            if (v.status === 'Finalizado') stats[key].finished++;
+        });
+        return Object.entries(stats)
+            .map(([name, s]) => ({ name, count: s.count, efficiency: Math.round((s.finished / s.count) * 100) }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5);
+    }, [viagens]);
+
+    // Timeline Data (Last 7 days)
+    const timelineData = useMemo(() => {
+        const last7Days = Array.from({ length: 7 }, (_, i) => {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            return d.toISOString().split('T')[0];
+        }).reverse();
+
+        const counts = last7Days.reduce((acc: any, date) => {
+            const dayMonth = date.split('-').slice(1).reverse().join('/');
+            acc[dayMonth] = 0;
+            viagens.forEach(v => {
+                if (v.dataSaida === date) acc[dayMonth]++;
+            });
+            return acc;
+        }, {});
+
+        return Object.entries(counts).map(([date, trips]) => ({ date, trips }));
+    }, [viagens]);
+
+    // Average Transit Time (Mocked for now since we don't have arrival timestamp in many records, but logic ready)
+    const avgTime = "28.5h"; // Placeholder for more complex diff calc
 
     if (loading) return (
         <div className="flex items-center justify-center min-h-[400px]">
@@ -108,8 +138,10 @@ export default function TripsDashboard() {
                         <span className="text-[10px] font-black text-text-muted uppercase tracking-widest whitespace-nowrap">Sucesso na Entrega</span>
                     </div>
                     <div>
-                        <h4 className="text-2xl font-black text-text-primary">99.4%</h4>
-                        <p className="text-[10px] text-emerald-500 font-bold mt-1 tracking-wider uppercase">Alta Performance</p>
+                        <h4 className="text-2xl font-black text-text-primary">{efficiency}%</h4>
+                        <p className={`text-[10px] font-bold mt-1 tracking-wider uppercase ${Number(efficiency) > 90 ? 'text-emerald-500' : 'text-amber-500'}`}>
+                            {Number(efficiency) > 90 ? 'Alta Performance' : 'Atenção Necessária'}
+                        </p>
                     </div>
                 </div>
 
@@ -140,7 +172,7 @@ export default function TripsDashboard() {
                         <span className="text-[10px] font-black text-text-muted uppercase tracking-widest whitespace-nowrap">Alertas Críticos</span>
                     </div>
                     <div>
-                        <h4 className="text-2xl font-black text-text-primary tracking-tighter">03 Ocorrências</h4>
+                        <h4 className="text-2xl font-black text-text-primary tracking-tighter">{problemTrips.length} Ocorrências</h4>
                         <p className="text-[10px] text-red-500 font-bold mt-1 tracking-wider uppercase">Acompanhamento necessário</p>
                     </div>
                 </div>
@@ -166,7 +198,9 @@ export default function TripsDashboard() {
                     <h3 className="text-xl font-black text-text-primary uppercase tracking-tight mb-2">Performance de Rotas</h3>
                     <p className="text-text-muted text-[10px] font-black uppercase tracking-widest mb-8">As 5 rotas mais frequentes</p>
                     <div className="space-y-4 flex-1">
-                        {routeData.map((route, i) => (
+                        {routeStats.length === 0 ? (
+                            <p className="text-xs text-text-muted italic">Sem rotas registradas</p>
+                        ) : routeStats.map((route, i) => (
                             <div key={i} className="flex flex-col gap-2 p-4 bg-background border border-border/50 rounded-2xl group hover:border-primary/30 transition-all">
                                 <div className="flex justify-between items-center text-xs font-black uppercase">
                                     <span className="text-text-primary flex items-center gap-2">
@@ -185,26 +219,26 @@ export default function TripsDashboard() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pb-8">
-                {despesas.slice(0, 4).map((d, i) => (
+                {viagens.slice(0, 4).map((v, i) => (
                     <div key={i} className="flex flex-col p-6 bg-surface border border-border rounded-[32px] shadow-sm relative overflow-hidden group">
                         <div className="flex justify-between items-start mb-6 border-b border-border/10 pb-4">
                             <div>
-                                <h5 className="text-sm font-black text-text-primary uppercase tracking-tight">Carga #{d.id.slice(-4).toUpperCase()}</h5>
-                                <p className="text-[10px] text-text-muted font-bold tracking-widest uppercase">{d.motoristaNome}</p>
+                                <h5 className="text-sm font-black text-text-primary uppercase tracking-tight">Carga #{v.codigoViagem || v.id.slice(-4).toUpperCase()}</h5>
+                                <p className="text-[10px] text-text-muted font-bold tracking-widest uppercase">{v.motoristaNome}</p>
                             </div>
-                            <span className={`px-2.5 py-1 rounded text-[8px] font-black uppercase border ${d.status === 'finalizado' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500' : 'bg-blue-500/10 border-blue-500/30 text-blue-500'}`}>
-                                {d.status === 'finalizado' ? 'ENTREGUE' : 'EM ROTA'}
+                            <span className={`px-2.5 py-1 rounded text-[8px] font-black uppercase border ${v.status === 'Finalizado' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500' : 'bg-blue-500/10 border-blue-500/30 text-blue-500'}`}>
+                                {v.status === 'Finalizado' ? 'ENTREGUE' : v.status?.toUpperCase()}
                             </span>
                         </div>
                         <div className="flex items-center gap-10">
                             <div className="flex-1">
                                 <p className="text-[10px] text-text-muted font-black uppercase">Origem</p>
-                                <p className="text-xs font-bold text-text-primary">São Paulo, SP</p>
+                                <p className="text-xs font-bold text-text-primary">{v.origem || '---'}</p>
                             </div>
                             <ArrowRight size={20} className="text-text-muted" />
                             <div className="flex-1">
                                 <p className="text-[10px] text-text-muted font-black uppercase">Destino</p>
-                                <p className="text-xs font-bold text-text-primary">Vitória, ES</p>
+                                <p className="text-xs font-bold text-text-primary">{v.destino || '---'}</p>
                             </div>
                         </div>
                     </div>

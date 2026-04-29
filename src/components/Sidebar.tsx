@@ -23,6 +23,10 @@ export default function Sidebar() {
                     <span className="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">dashboard</span>
                     <span className="text-sm font-medium">Dashboard Geral</span>
                 </Link>
+                <Link to="/resumo-dia" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg group transition-colors ${isActive('/resumo-dia') ? 'bg-primary/10 text-primary border border-primary/20' : 'text-text-muted hover:bg-surface/80 hover:text-text-primary'}`}>
+                    <span className="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">calendar_clock</span>
+                    <span className="text-sm font-medium">Resumo do Dia</span>
+                </Link>
                 <div className="flex flex-col gap-1 mt-2">
                     <p className="px-3 text-[10px] font-black uppercase text-text-muted tracking-widest mb-1 opacity-50">Análises</p>
                     <Link to="/dashboards/viagens" className={`flex items-center gap-3 px-3 py-2 rounded-lg group transition-colors ${isActive('/dashboards/viagens') ? 'bg-primary/10 text-primary border border-primary/20' : 'text-text-muted hover:bg-surface/80 hover:text-text-primary'}`}>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
     collection,
     addDoc,
@@ -29,13 +30,14 @@ const BAU_SUBTYPES = ['80m³', '90m³', '100m³', '110m³', '120m³', 'Sider', '
 const CAVALO_SUBTYPES = ['Toco', 'Truck', 'Bitruck', 'Carreta', 'LS', 'Rodotrem'];
 
 export default function Veiculos() {
+    const location = useLocation();
     const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
     const [loading, setLoading] = useState(true);
     const [currentPage] = useState(1);
     const pageSize = 10;
 
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterStatus] = useState<'todos' | 'ativo' | 'inativo'>('todos');
+    const [filterStatus, setFilterStatus] = useState<'todos' | 'ativo' | 'inativo'>('todos');
 
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [formData, setFormData] = useState<{
@@ -75,6 +77,14 @@ export default function Veiculos() {
         });
         return () => unsubscribe();
     }, []);
+
+    useEffect(() => {
+        if (location.state && location.state.searchTerm) {
+            setSearchTerm(location.state.searchTerm);
+            // Limpa o estado para não re-filtrar se o usuário navegar de volta
+            window.history.replaceState({}, document.title);
+        }
+    }, [location]);
 
     useEffect(() => {
         if (toast) {
@@ -279,6 +289,30 @@ export default function Veiculos() {
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
+                </div>
+                {/* Status Tabs */}
+                <div className="px-4 lg:px-6 py-4 flex flex-wrap items-center gap-2 border-b border-border bg-surface/10">
+                    <button
+                        onClick={() => setFilterStatus('todos')}
+                        className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${filterStatus === 'todos' ? 'bg-primary text-background-dark shadow-lg shadow-primary/20 scale-105' : 'text-text-muted hover:bg-border/30'}`}
+                    >
+                        <span className="material-symbols-outlined text-[18px]">local_shipping</span>
+                        Todos
+                    </button>
+                    <button
+                        onClick={() => setFilterStatus('ativo')}
+                        className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${filterStatus === 'ativo' ? 'bg-green-500 text-white shadow-lg shadow-green-500/20 scale-105' : 'text-text-muted hover:bg-border/30'}`}
+                    >
+                        <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                        Ativos
+                    </button>
+                    <button
+                        onClick={() => setFilterStatus('inativo')}
+                        className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${filterStatus === 'inativo' ? 'bg-slate-500 text-white shadow-lg shadow-slate-500/20 scale-105' : 'text-text-muted hover:bg-border/30'}`}
+                    >
+                        <span className="material-symbols-outlined text-[18px]">cancel</span>
+                        Inativos
+                    </button>
                 </div>
 
                 <div className="overflow-x-auto">

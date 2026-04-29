@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useReactToPrint } from 'react-to-print';
+import { BadgeDollarSign } from 'lucide-react';
 
 interface Rota {
     id: string;
@@ -134,23 +135,36 @@ const getStatusColor = (status: string, rotas: any[] = []) => {
         return 'bg-red-500/10 text-red-500 border-red-500/20';
     }
     
-    if (status === 'Finalizado' || (rotas && Array.isArray(rotas) && rotas.length > 0 && rotas.every(r => r.status === 'Finalizado'))) {
+    const normalized = normalizeStatus(status);
+    
+    if (normalized === 'Finalizado' || (rotas && Array.isArray(rotas) && rotas.length > 0 && rotas.every(r => r.status === 'Finalizado'))) {
         return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
     }
 
-    switch (status) {
+    switch (normalized) {
         case 'Em planejamento': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
         case 'Em curso': return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
         case 'Finalizado': return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
         case 'Problema': return 'bg-red-500/10 text-red-500 border-red-500/20';
-        case 'EM_CURSO': return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
-        case 'CONCLUÍDA': return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
         default: return 'bg-slate-500/10 text-slate-500 border-slate-500/20';
     }
 };
 
+function normalizeStatus(status: string): string {
+    if (!status) return 'Em planejamento';
+    const s = status.toUpperCase();
+    if (s === 'EM_CURSO' || s === 'CURSO') return 'Em curso';
+    if (s === 'CONCLUÍDA' || s === 'FINALIZADO' || s === 'CONCLUIDA') return 'Finalizado';
+    if (s === 'PROBLEMA') return 'Problema';
+    if (s === 'EM PLANEJAMENTO' || s === 'PLANEJAMENTO') return 'Em planejamento';
+    return status;
+}
+
+
+
 
 export default function ControleCargas() {
+    const location = useLocation();
     const [viagens, setViagens] = useState<Viagem[]>([]);
     const [motoristas, setMotoristas] = useState<{nome: string, status: string, cavaloPlaca?: string, bauPlaca?: string}[]>([]);
     const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
@@ -230,6 +244,14 @@ export default function ControleCargas() {
         });
         return () => unsub();
     }, []);
+
+    useEffect(() => {
+        if (location.state && location.state.searchTerm) {
+            setFilters(prev => ({ ...prev, search: location.state.searchTerm }));
+            // Limpa o estado para não re-filtrar se o usuário navegar de volta
+            window.history.replaceState({}, document.title);
+        }
+    }, [location]);
 
     useEffect(() => {
         const q = query(collection(db, 'motoristas'));
@@ -401,7 +423,9 @@ export default function ControleCargas() {
             const destino = formData.rotas.length > 0 ? formData.rotas[formData.rotas.length - 1].destino : '';
             const cliente = formData.rotas.length > 0 ? formData.rotas[0].cliente : '';
             const peso = formData.rotas.reduce((acc, r) => acc + r.peso, 0);
-            const valorFrete = formData.rotas.reduce((acc, r) => acc + r.valorFrete, 0);
+            const valorFrete = formData.rotas.reduce((acc, r) => acc + (Number(r.valorFrete) || 0), 0);
+            const valorTotalCombustivel = formData.rotas.reduce((acc, r) => acc + ((Number(r.litrosAbastecidos) || 0) * (Number(r.valorLitroCombustivel) || 0)), 0);
+            const isComissionada = formData.comissionada || formData.rotas.some(r => r.comissionada);
             
             const payload = {
                 ...formData,
@@ -410,6 +434,8 @@ export default function ControleCargas() {
                 cliente,
                 peso,
                 valorFrete,
+                valorTotalCombustivel,
+                comissionada: isComissionada
             };
 
             if (editingId) {
@@ -515,7 +541,7 @@ export default function ControleCargas() {
                              (v.cliente || '').toLowerCase().includes(filters.search.toLowerCase()) ||
                              (v.origem || '').toLowerCase().includes(filters.search.toLowerCase()) ||
                              (v.destino || '').toLowerCase().includes(filters.search.toLowerCase());
-        const matchesStatus = filters.status === '' || v.status === filters.status;
+        const matchesStatus = filters.status === '' || normalizeStatus(v.status) === filters.status;
         const matchesStatusRota = filters.statusRota === '' || (v.rotas && Array.isArray(v.rotas) && v.rotas.some((r: any) => r.status === filters.statusRota));
         const matchesMotorista = filters.motorista === '' || v.motoristaNome === filters.motorista;
         const matchesCliente = filters.cliente === '' || (v.rotas && Array.isArray(v.rotas) && v.rotas.some((r: any) => r.cliente === filters.cliente));
@@ -674,17 +700,7 @@ export default function ControleCargas() {
                             {clientes.map(c => <option key={c.nome} value={c.nome}>{c.nome}</option>)}
                         </select>
                     </div>
-                    <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-black uppercase text-primary/80 ml-1">Status</span>
-                        <select 
-                            className="w-full bg-background border border-border rounded-xl px-4 h-[34px] text-xs outline-none focus:border-primary"
-                            value={filters.status}
-                            onChange={(e) => setFilters({...filters, status: e.target.value})}
-                        >
-                            <option value="">Todos os Status</option>
-                            {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                    </div>
+
                     <div className="flex flex-col gap-1">
                         <span className="text-[10px] font-black uppercase text-primary/80 ml-1">Status Rota</span>
                         <select 
@@ -739,6 +755,31 @@ export default function ControleCargas() {
                 </div>
             </div>
 
+            {/* Status Tabs */}
+            <div className="flex flex-wrap items-center gap-2 mb-6 bg-surface border border-border p-1.5 rounded-2xl w-fit shadow-sm">
+                <button
+                    onClick={() => setFilters({ ...filters, status: '' })}
+                    className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${filters.status === '' ? 'bg-primary text-background-dark shadow-lg shadow-primary/20 scale-105' : 'text-text-muted hover:bg-border/30'}`}
+                >
+                    <span className="material-symbols-outlined text-[18px]">list</span>
+                    Todos
+                </button>
+                {STATUS_OPTIONS.map(status => (
+                    <button
+                        key={status}
+                        onClick={() => setFilters({ ...filters, status })}
+                        className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${filters.status === status ? 'bg-primary text-background-dark shadow-lg shadow-primary/20 scale-105' : 'text-text-muted hover:bg-border/30'}`}
+                    >
+                        <span className="material-symbols-outlined text-[18px]">
+                            {status === 'Em planejamento' ? 'edit_note' : 
+                             status === 'Em curso' ? 'local_shipping' : 
+                             status === 'Finalizado' ? 'task_alt' : 'warning'}
+                        </span>
+                        {status}
+                    </button>
+                ))}
+            </div>
+
             {/* Trips List */}
             <div className="bg-surface border border-border rounded-3xl overflow-hidden shadow-xl">
                 <div className="overflow-x-auto">
@@ -788,7 +829,7 @@ export default function ControleCargas() {
                                         </td>
                                         <td className="px-6 py-4 text-center">
                                             <span className={`inline-flex px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${getStatusColor(v.status, v.rotas)}`}>
-                                                {v.status}
+                                                {normalizeStatus(v.status)}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-right">
@@ -841,7 +882,29 @@ export default function ControleCargas() {
 
                         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto pr-4 space-y-8 custom-scrollbar pt-2">
                             {/* Secção 1: Identificação e Datas */}
-                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                            <div className="flex flex-col gap-6 bg-background-dark/30 p-6 rounded-3xl border border-border">
+                                <div className="flex items-center justify-between border-b border-border pb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-primary/10 text-primary rounded-xl">
+                                            <BadgeDollarSign size={18} />
+                                        </div>
+                                        <h4 className="text-xs font-black uppercase text-text-primary tracking-widest">Configurações do Ciclo</h4>
+                                    </div>
+                                    <label className="flex items-center gap-3 bg-surface border border-border px-5 py-2.5 rounded-2xl cursor-pointer hover:border-primary transition-all group">
+                                        <input 
+                                            type="checkbox" 
+                                            className="rounded border-border text-primary focus:ring-primary size-5" 
+                                            checked={formData.comissionada} 
+                                            onChange={(e) => setFormData(prev => ({ ...prev, comissionada: e.target.checked }))} 
+                                        />
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-black uppercase text-text-primary group-hover:text-primary transition-colors">Viagem Comissionada</span>
+                                            <span className="text-[8px] font-bold text-text-muted uppercase tracking-tighter">Enviar para aba de comissões imediatamente</span>
+                                        </div>
+                                    </label>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                                 <div className="lg:col-span-3 space-y-4">
                                     <label className="flex flex-col gap-2">
                                         <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest ml-1">Código</span>
@@ -878,6 +941,7 @@ export default function ControleCargas() {
                                         </select>
                                     </label>
                                 </div>
+                            </div>
                             </div>
 
                             {/* Secção 2: Rotas */}

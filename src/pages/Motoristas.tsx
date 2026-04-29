@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
     collection,
     addDoc,
@@ -36,6 +37,7 @@ interface VeiculoRef {
 
 
 export default function Motoristas() {
+    const location = useLocation();
     // List state
     const [motoristas, setMotoristas] = useState<Motorista[]>([]);
     const [veiculos, setVeiculos] = useState<VeiculoRef[]>([]);
@@ -101,6 +103,14 @@ export default function Motoristas() {
         return () => unsubscribe();
     }, []);
 
+
+    useEffect(() => {
+        if (location.state && location.state.searchTerm) {
+            setSearchTerm(location.state.searchTerm);
+            // Limpa o estado para não re-filtrar se o usuário navegar de volta
+            window.history.replaceState({}, document.title);
+        }
+    }, [location]);
 
     // Toast auto-hide
     useEffect(() => {
@@ -325,31 +335,6 @@ export default function Motoristas() {
                         />
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-6">
-                        <div className="flex items-center gap-4">
-                            <span className="text-[10px] text-text-muted font-black uppercase tracking-widest">Status:</span>
-                            <div className="flex bg-background border border-border rounded-xl p-1 h-9 items-center outline-none">
-                                <button
-                                    onClick={() => setFilterStatus('todos')}
-                                    className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${filterStatus === 'todos' ? 'bg-primary text-background-dark shadow-sm' : 'text-text-muted hover:text-text-primary'}`}
-                                >
-                                    Todos
-                                </button>
-                                <button
-                                    onClick={() => setFilterStatus('ativo')}
-                                    className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${filterStatus === 'ativo' ? 'bg-green-500 text-white shadow-sm' : 'text-text-muted hover:text-text-primary'}`}
-                                >
-                                    Ativos
-                                </button>
-                                <button
-                                    onClick={() => setFilterStatus('inativo')}
-                                    className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${filterStatus === 'inativo' ? 'bg-slate-500 text-white shadow-sm' : 'text-text-muted hover:text-text-primary'}`}
-                                >
-                                    Inativos
-                                </button>
-                            </div>
-                        </div>
-
                         <div className="flex items-center gap-4">
                             <span className="text-[10px] text-text-muted font-black uppercase tracking-widest">Vínculo:</span>
                             <div className="flex bg-background border border-border rounded-xl p-1 h-9 items-center outline-none">
@@ -373,9 +358,31 @@ export default function Motoristas() {
                                 </button>
                             </div>
                         </div>
-                    </div>
                 </div>
-
+                {/* Status Tabs */}
+                <div className="px-4 lg:px-6 py-4 flex flex-wrap items-center gap-2 border-b border-border bg-surface/10">
+                    <button
+                        onClick={() => setFilterStatus('todos')}
+                        className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${filterStatus === 'todos' ? 'bg-primary text-background-dark shadow-lg shadow-primary/20 scale-105' : 'text-text-muted hover:bg-border/30'}`}
+                    >
+                        <span className="material-symbols-outlined text-[18px]">group</span>
+                        Todos
+                    </button>
+                    <button
+                        onClick={() => setFilterStatus('ativo')}
+                        className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${filterStatus === 'ativo' ? 'bg-green-500 text-white shadow-lg shadow-green-500/20 scale-105' : 'text-text-muted hover:bg-border/30'}`}
+                    >
+                        <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                        Ativos
+                    </button>
+                    <button
+                        onClick={() => setFilterStatus('inativo')}
+                        className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${filterStatus === 'inativo' ? 'bg-slate-500 text-white shadow-lg shadow-slate-500/20 scale-105' : 'text-text-muted hover:bg-border/30'}`}
+                    >
+                        <span className="material-symbols-outlined text-[18px]">cancel</span>
+                        Inativos
+                    </button>
+                </div>
                 <div className="overflow-x-auto custom-scrollbar">
                     <table className="w-full text-left border-collapse min-w-[1000px]">
                         <thead>

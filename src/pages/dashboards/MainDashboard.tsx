@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { collection, query, onSnapshot, getDocs, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import {
@@ -29,33 +29,72 @@ import {
 
 export default function MainDashboard() {
     const [despesas, setDespesas] = useState<any[]>([]);
+    const [viagens, setViagens] = useState<any[]>([]);
     const [motoristasCount, setMotoristasCount] = useState(0);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const qDespesas = query(collection(db, 'despesas_frota'));
-        const unsubscribe = onSnapshot(qDespesas, (snapshot) => {
+        const unsubDespesas = onSnapshot(qDespesas, (snapshot) => {
             const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setDespesas(list);
+        });
+
+        const qViagens = query(collection(db, 'cargas'));
+        const unsubViagens = onSnapshot(qViagens, (snapshot) => {
+            const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setViagens(list);
             setLoading(false);
         });
 
         const qMotoristas = query(collection(db, 'motoristas'), where('vinculo', '==', 'propria'));
         getDocs(qMotoristas).then(snap => setMotoristasCount(snap.size));
 
-        return () => unsubscribe();
+        return () => {
+            unsubDespesas();
+            unsubViagens();
+        };
     }, []);
 
     // Process data for charts
     const totalDespesas = despesas.reduce((acc, curr) => acc + (curr.valorTotal || 0), 0);
+    const totalReceita = viagens.reduce((acc, curr) => acc + (Number(curr.valorFrete) || 0), 0);
     const pendingCount = despesas.filter(d => d.status === 'pendente').length;
+    
+    const finishedViagens = viagens.filter(v => v.status === 'Finalizado');
+    const eficienciaGlobal = viagens.length > 0 ? ((finishedViagens.length / viagens.length) * 100).toFixed(1) : "0.0";
 
-    // Monthly data for Area Chart (Mocking slightly if current month has little data)
-    const monthlyData = [
-        { name: 'Jan', value: totalDespesas * 0.8 },
-        { name: 'Fev', value: totalDespesas * 0.9 },
-        { name: 'Mar', value: totalDespesas },
-    ];
+    // Monthly data aggregation (Revenue vs Costs)
+    const monthlyData = useMemo(() => {
+        const months: { [key: string]: { name: string, revenue: number, costs: number } } = {};
+        
+        // Use last 6 months
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date();
+            d.setMonth(d.getMonth() - i);
+            const key = d.toISOString().substring(0, 7); // YYYY-MM
+            const name = d.toLocaleDateString('pt-BR', { month: 'short' }).toUpperCase();
+            months[key] = { name, revenue: 0, costs: 0 };
+        }
+
+        viagens.forEach(v => {
+            const date = v.dataSaida || '';
+            const key = date.substring(0, 7);
+            if (months[key]) {
+                months[key].revenue += (Number(v.valorFrete) || 0);
+            }
+        });
+
+        despesas.forEach(d => {
+            const dateObj = d.dataRegistro?.toDate ? d.dataRegistro.toDate() : new Date(d.dataRegistro || d.dataInicio);
+            const key = dateObj.toISOString().substring(0, 7);
+            if (months[key]) {
+                months[key].costs += (Number(d.valorTotal) || 0);
+            }
+        });
+
+        return Object.values(months);
+    }, [viagens, despesas]);
 
     // Status distribution for Pie Chart
     const statusData = [
@@ -99,10 +138,10 @@ export default function MainDashboard() {
             {/* Main Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {[
-                    { label: 'Receita Total Est.', value: `R$ ${(totalDespesas * 1.5).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`, icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-500/10', trend: '+12.5%', isUp: true },
-                    { label: 'Custos da Frota', value: `R$ ${totalDespesas.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`, icon: DollarSign, color: 'text-primary', bg: 'bg-primary/10', trend: '+5.2%', isUp: true },
-                    { label: 'Viagens Ativas', value: despesas.length.toString(), icon: Truck, color: 'text-blue-500', bg: 'bg-blue-500/10', trend: 'Estável', isUp: null },
-                    { label: 'Eficiência Motoristas', value: '98.2%', icon: Users, color: 'text-amber-500', bg: 'bg-amber-500/10', trend: '+2.1%', isUp: true },
+                    { label: 'Receita Total', value: `R$ ${totalReceita.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`, icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-500/10', trend: 'Acumulado', isUp: true },
+                    { label: 'Custos da Frota', value: `R$ ${totalDespesas.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`, icon: DollarSign, color: 'text-primary', bg: 'bg-primary/10', trend: 'Total Despesas', isUp: false },
+                    { label: 'Viagens Ativas', value: viagens.filter(v => v.status === 'Em curso').length.toString(), icon: Truck, color: 'text-blue-500', bg: 'bg-blue-500/10', trend: 'Em curso', isUp: null },
+                    { label: 'Eficiência Frota', value: `${eficienciaGlobal}%`, icon: Users, color: 'text-amber-500', bg: 'bg-amber-500/10', trend: 'Finalizadas', isUp: true },
                 ].map((stat, i) => (
                     <div key={i} className="bg-surface border border-border rounded-[32px] p-6 shadow-sm hover:shadow-xl hover:translate-y-[-4px] transition-all cursor-pointer group overflow-hidden relative">
                         <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
@@ -171,11 +210,20 @@ export default function MainDashboard() {
                                 />
                                 <Area
                                     type="monotone"
-                                    dataKey="value"
-                                    stroke="#eab308"
+                                    dataKey="revenue"
+                                    stroke="#10b981"
                                     strokeWidth={4}
                                     fillOpacity={1}
                                     fill="url(#colorValue)"
+                                    name="Receita"
+                                />
+                                <Area
+                                    type="monotone"
+                                    dataKey="costs"
+                                    stroke="#eab308"
+                                    strokeWidth={4}
+                                    fillOpacity={0.1}
+                                    name="Custos"
                                 />
                             </AreaChart>
                         </ResponsiveContainer>
@@ -299,9 +347,9 @@ export default function MainDashboard() {
                         </div>
                         <div className="p-6 bg-primary text-background-dark rounded-3xl flex flex-col gap-2 shadow-lg shadow-primary/20">
                             <TrendingUp className="text-background-dark/80 mb-2" size={24} />
-                            <p className="text-[10px] font-black text-background-dark/60 uppercase tracking-widest">Carga Processada</p>
-                            <p className="text-lg font-black">{Math.round(totalDespesas / 500)} ton.</p>
-                            <p className="text-[10px] font-bold">Meta: 100%</p>
+                            <p className="text-[10px] font-black text-background-dark/60 uppercase tracking-widest">Viagens Totais</p>
+                            <p className="text-lg font-black">{viagens.length} viagens</p>
+                            <p className="text-[10px] font-bold">Base Golden</p>
                         </div>
                     </div>
                 </div>
