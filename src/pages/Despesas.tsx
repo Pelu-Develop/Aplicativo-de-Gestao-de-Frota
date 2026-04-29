@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
     collection,
@@ -28,6 +28,7 @@ interface ItemDespesa {
     valor: number;
     descricao: string;
     data?: string;
+    anexos?: string[];
 }
 
 interface Despesa {
@@ -82,7 +83,8 @@ export default function Despesas() {
 
     const [printingDespesa, setPrintingDespesa] = useState<Despesa | null>(null);
 
-    const [newItem, setNewItem] = useState({ categoria: '', valor: '', descricao: '', data: '' });
+    const [newItem, setNewItem] = useState({ categoria: '', valor: '', descricao: '', data: '', anexos: [] as string[] });
+    const [uploadingItemFiles, setUploadingItemFiles] = useState(false);
 
     // Filters state
     const [filters, setFilters] = useState({
@@ -156,7 +158,8 @@ export default function Despesas() {
                 motoristaNome: doc.data().motoristaNome,
                 cliente: doc.data().cliente,
                 dataCarregamento: doc.data().dataCarregamento,
-                dataPrevistaDescarregamento: doc.data().dataPrevistaDescarregamento
+                dataPrevistaDescarregamento: doc.data().dataPrevistaDescarregamento,
+                rotas: doc.data().rotas || []
             } as any));
             setTodasViagens(list);
         });
@@ -214,10 +217,39 @@ export default function Despesas() {
                 categoria: newItem.categoria,
                 valor: parseFloat(newItem.valor),
                 descricao: newItem.descricao,
-                data: newItem.data || new Date().toISOString().split('T')[0]
+                data: newItem.data || new Date().toISOString().split('T')[0],
+                anexos: newItem.anexos
             }]
         });
-        setNewItem({ categoria: '', valor: '', descricao: '', data: '' });
+        setNewItem({ categoria: '', valor: '', descricao: '', data: '', anexos: [] });
+    };
+
+    const handleFirebaseUpload = async (file: File, path: string): Promise<string> => {
+        const { ref, uploadBytesResumable, getDownloadURL } = await import('firebase/storage');
+        const { storage } = await import('../lib/firebase');
+        const fileRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
+        const uploadTask = await uploadBytesResumable(fileRef, file);
+        return await getDownloadURL(uploadTask.ref);
+    };
+
+    const uploadNewItemAnexo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+        
+        setUploadingItemFiles(true);
+        try {
+            const urls = await Promise.all(files.map(f => handleFirebaseUpload(f, 'despesas')));
+            setNewItem(prev => ({
+                ...prev,
+                anexos: [...prev.anexos, ...urls]
+            }));
+            showToast('Fotos anexadas com sucesso!', 'success');
+        } catch (err) {
+            console.error(err);
+            showToast('Erro ao enviar fotos', 'error');
+        } finally {
+            setUploadingItemFiles(false);
+        }
     };
 
     const removeItem = (index: number) => {
@@ -231,7 +263,8 @@ export default function Despesas() {
             categoria: itemToEdit.categoria,
             valor: itemToEdit.valor.toString(),
             descricao: itemToEdit.descricao || '',
-            data: itemToEdit.data || ''
+            data: itemToEdit.data || '',
+            anexos: itemToEdit.anexos || []
         });
         removeItem(index);
     };
@@ -294,36 +327,20 @@ export default function Despesas() {
         }
     };
 
-    const handleUndoConciliation = async (e: React.MouseEvent, despesa: Despesa) => {
+    const handleDevolver = async (e: React.MouseEvent, despesa: Despesa) => {
         e.stopPropagation();
-        if (!window.confirm('Deseja realmente desfazer a conciliação desta despesa? Ela voltará para a fila de conciliação bruta.')) return;
+        if (!window.confirm('Deseja realmente devolver esta despesa para o motorista corrigir?')) return;
         
         setSubmitting(true);
         try {
-            await addDoc(collection(db, 'despesas_brutas'), {
-                motoristaNomeOriginal: despesa.motoristaNome,
-                motoristaNome: despesa.motoristaNome,
-                motoristaId: despesa.motoristaId || null,
-                motoristaCPF: despesa.motoristaCPF || '',
-                placaCavalo: despesa.placaCavalo,
-                placaBau: despesa.placaBau,
-                items: despesa.items,
-                valorTotal: despesa.valorTotal,
-                dataInicio: despesa.dataInicio,
-                dataFim: despesa.dataFim,
-                diasDiaria: despesa.diasDiaria,
-                valorDiaria: despesa.valorDiaria,
-                data: serverTimestamp(),
-                tipo: 'desfeita_da_frota',
-                origem: 'reversao_manual',
-                status: 'pendente'
+            await updateDoc(doc(db, 'despesas_frota', despesa.id), {
+                status: 'devolvido',
+                dataAtualizacao: serverTimestamp()
             });
-
-            await deleteDoc(doc(db, 'despesas_frota', despesa.id));
-            showToast('Conciliação desfeita com sucesso!', 'success');
+            showToast('Despesa devolvida para o motorista com sucesso!', 'success');
         } catch (error) {
             console.error(error);
-            showToast('Erro ao desfazer conciliação.', 'error');
+            showToast('Erro ao devolver despesa.', 'error');
         } finally {
             setSubmitting(false);
         }
@@ -633,7 +650,7 @@ export default function Despesas() {
                                             <span className="text-xs font-bold text-blue-500">R$ {d.adiantamento?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                                         </td>
                                         <td className="px-6 py-4 text-right">
-                                            <span className={`text-base font-black ${d.saldoFinal >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                            <span className={`text-base font-black ${d.saldoFinal > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
                                                 R$ {d.saldoFinal?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                             </span>
                                         </td>
@@ -652,9 +669,9 @@ export default function Despesas() {
                                                         <span className="material-symbols-outlined text-[20px]">{d.status === 'finalizado' ? 'lock_open' : 'lock'}</span>
                                                     </button>
                                                     <button
-                                                        onClick={(e) => handleUndoConciliation(e, d)}
+                                                        onClick={(e) => handleDevolver(e, d)}
                                                         className="size-10 rounded-xl bg-background border border-border flex items-center justify-center text-text-muted hover:text-orange-500 hover:border-orange-500/30 transition-all"
-                                                        title="Desfazer Conciliação (Voltar para Brutas)"
+                                                        title="Devolver para o Motorista"
                                                     >
                                                         <span className="material-symbols-outlined text-[20px]">undo</span>
                                                     </button>
@@ -911,13 +928,22 @@ export default function Despesas() {
                                         value={newItem.descricao}
                                         onChange={(e) => setNewItem({ ...newItem, descricao: e.target.value })}
                                     />
-                                    <button
-                                        type="button"
-                                        onClick={addItem}
-                                        className="col-span-1 bg-primary text-background-dark rounded-xl flex items-center justify-center hover:bg-primary/80 transition-colors shadow-lg"
-                                    >
-                                        <span className="material-symbols-outlined text-sm">add</span>
-                                    </button>
+                                    <div className="col-span-4 flex items-center gap-2 mt-2 lg:mt-0 lg:col-span-12 justify-end">
+                                        {newItem.anexos && newItem.anexos.length > 0 && (
+                                            <span className="text-[10px] font-black text-emerald-500">{newItem.anexos.length} foto(s)</span>
+                                        )}
+                                        <label className="bg-surface border border-primary/20 text-primary cursor-pointer hover:bg-primary/10 transition-colors p-2 rounded-xl flex items-center justify-center flex-1 lg:flex-none" title="Anexar Fotos">
+                                            {uploadingItemFiles ? <span className="material-symbols-outlined text-sm animate-spin">sync</span> : <span className="material-symbols-outlined text-sm">add_a_photo</span>}
+                                            <input type="file" multiple accept="image/*" className="hidden" disabled={uploadingItemFiles} onChange={uploadNewItemAnexo} />
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={addItem}
+                                            className="bg-primary text-background-dark rounded-xl flex items-center justify-center hover:bg-primary/80 transition-colors shadow-lg p-2 px-6 font-black uppercase text-xs flex-2 lg:flex-none"
+                                        >
+                                            Adicionar
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <div className="space-y-2">
@@ -950,6 +976,15 @@ export default function Despesas() {
                                                     <p className="text-[10px] text-text-muted italic">{item.descricao}</p>
                                                 </div>
                                             )}
+                                            {item.anexos && item.anexos.length > 0 && (
+                                                <div className="mt-2 flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                                                    {item.anexos.map((url, imgIdx) => (
+                                                        <a key={imgIdx} href={url} target="_blank" rel="noreferrer" className="relative shrink-0">
+                                                            <img src={url} alt="Comprovante" className="w-16 h-16 object-cover rounded-lg border border-primary/10 hover:opacity-80 transition-opacity" />
+                                                        </a>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
@@ -970,7 +1005,7 @@ export default function Despesas() {
                                 </div>
                                 <div className="flex flex-col border-l border-border pl-6">
                                     <span className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1 ml-0.5">Saldo a Receber/Pagar</span>
-                                    <span className={`text-2xl font-black tracking-tight ${((calculateDiarias() * formData.valorDiaria) + formData.items.reduce((acc, curr) => acc + curr.valor, 0) + (formData.comissaoCombustivel || 0) - (formData.adiantamento || 0)) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                    <span className={`text-2xl font-black tracking-tight ${((calculateDiarias() * formData.valorDiaria) + formData.items.reduce((acc, curr) => acc + curr.valor, 0) + (formData.comissaoCombustivel || 0) - (formData.adiantamento || 0)) > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
                                         R$ {(
                                             (calculateDiarias() * formData.valorDiaria) +
                                             formData.items.reduce((acc, curr) => acc + curr.valor, 0) +
@@ -1084,18 +1119,14 @@ export default function Despesas() {
                         {/* Detalhes da Viagem */}
                         <div className="mb-3">
                             <h2 className="text-[8px] font-black uppercase tracking-widest border-b border-gray-300 pb-0.5 mb-2">Resumo da Movimentação</h2>
-                            <div className="bg-gray-50 p-2.5 rounded-lg grid grid-cols-3 gap-2 mb-2">
+                            <div className="bg-gray-50 p-2.5 rounded-lg grid grid-cols-2 gap-2 mb-2">
                                 <div>
-                                    <p className="text-[8px] text-gray-500 uppercase font-black">Período</p>
+                                    <p className="text-[8px] text-gray-500 uppercase font-black">Período do Acerto</p>
                                     <p className="text-xs font-bold">{new Date(printingDespesa.dataInicio + 'T12:00:00').toLocaleDateString('pt-BR')} a {new Date(printingDespesa.dataFim + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
                                 </div>
                                 <div>
                                     <p className="text-[8px] text-gray-500 uppercase font-black">Total de Dias</p>
                                     <p className="text-xs font-bold">{printingDespesa.diasDiaria} Diárias (R$ {printingDespesa.valorDiaria?.toLocaleString('pt-BR')})</p>
-                                </div>
-                                <div>
-                                    <p className="text-[8px] text-gray-500 uppercase font-black">Contagem de Cargas</p>
-                                    <p className="text-xs font-bold">{printingDespesa.viagensIds?.length || 0} Viagens</p>
                                 </div>
                             </div>
                             
@@ -1103,31 +1134,45 @@ export default function Despesas() {
                                 <table className="w-full text-[9px] border-collapse mt-1">
                                     <thead>
                                         <tr className="bg-gray-100 border-y border-gray-300 text-left font-black uppercase text-[7px]">
-                                            <th className="py-1 px-2">Cód / Cliente</th>
-                                            <th className="py-1 px-2">Datas (Carreg/Descarreg)</th>
-                                            <th className="py-1 px-2">Rota (Origem → Destino)</th>
+                                            <th className="py-1 px-2">Ciclo / Rota</th>
+                                            <th className="py-1 px-2">Cliente / Carga</th>
+                                            <th className="py-1 px-2 text-center">Data Saída</th>
+                                            <th className="py-1 px-2 text-center">Data Descarreg.</th>
+                                            <th className="py-1 px-2">Trajeto (Origem → Destino)</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
                                         {todasViagens.filter(v => printingDespesa.viagensIds?.includes(v.id)).map(v => (
-                                            <tr key={v.id}>
-                                                <td className="py-1 px-2">
-                                                    <p className="font-bold">{v.codigoViagem || 'V-N/A'}</p>
-                                                    <p className="text-[7px] text-gray-500">{v.cliente || '-'}</p>
-                                                </td>
-                                                <td className="py-1 px-2 whitespace-nowrap">
-                                                    <div className="flex flex-col">
-                                                        <span>{v.dataCarregamento ? new Date(v.dataCarregamento + 'T12:00:00').toLocaleDateString('pt-BR') : '---'}</span>
-                                                        <span className="text-[7px] text-gray-400 italic">Prev: {v.dataPrevistaDescarregamento ? new Date(v.dataPrevistaDescarregamento + 'T12:00:00').toLocaleDateString('pt-BR') : '---'}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="py-1 px-2 uppercase">{v.origem} → {v.destino}</td>
-                                            </tr>
+                                            <React.Fragment key={v.id}>
+                                                {/* Header do Ciclo */}
+                                                <tr className="bg-gray-50/50">
+                                                    <td colSpan={5} className="py-1 px-2 font-black text-[8px] text-primary border-t border-gray-200">
+                                                        CICLO: {v.codigoViagem || 'V-N/A'} | SAI: {v.dataSaida ? new Date(v.dataSaida + 'T12:00:00').toLocaleDateString('pt-BR') : '---'}
+                                                    </td>
+                                                </tr>
+                                                {/* Rotas do Ciclo */}
+                                                {v.rotas && v.rotas.map((r: any, ri: number) => (
+                                                    <tr key={`${v.id}-${ri}`} className="border-b border-gray-50">
+                                                        <td className="py-1 px-2 font-bold text-[8px]">Rota {ri + 1}</td>
+                                                        <td className="py-1 px-2">
+                                                            <p className="font-bold text-[8px]">{r.cliente || '-'}</p>
+                                                            <p className="text-[7px] text-gray-500 italic">{r.peso ? `${r.peso}t` : ''}</p>
+                                                        </td>
+                                                        <td className="py-1 px-2 whitespace-nowrap text-center text-[8px]">
+                                                            {r.dataSaidaRota ? new Date(r.dataSaidaRota + 'T12:00:00').toLocaleDateString('pt-BR') : '---'}
+                                                        </td>
+                                                        <td className="py-1 px-2 whitespace-nowrap text-center text-[8px] font-bold">
+                                                            {r.dataDescarregamentoRota ? new Date(r.dataDescarregamentoRota + 'T12:00:00').toLocaleDateString('pt-BR') : (r.previsaoChegadaRota ? new Date(r.previsaoChegadaRota + 'T12:00:00').toLocaleDateString('pt-BR') : '---')}
+                                                        </td>
+                                                        <td className="py-1 px-2 uppercase text-[8px]">{r.origem} → {r.destino}</td>
+                                                    </tr>
+                                                ))}
+                                            </React.Fragment>
                                         ))}
                                         {/* Fallback if list is not fully loaded in state */}
                                         {printingDespesa.viagensIds.length > todasViagens.filter(v => printingDespesa.viagensIds?.includes(v.id)).length && (
                                             <tr>
-                                                <td colSpan={3} className="py-1 px-2 text-gray-400 italic text-[7px]">
+                                                <td colSpan={5} className="py-1 px-2 text-gray-400 italic text-[7px]">
                                                     + {printingDespesa.viagensIds.length - todasViagens.filter(v => printingDespesa.viagensIds?.includes(v.id)).length} outras viagens vinculadas a este acerto.
                                                 </td>
                                             </tr>
@@ -1198,9 +1243,9 @@ export default function Despesas() {
                                     </tr>
                                     <tr className="bg-gray-100">
                                         <td colSpan={2} className="py-2 px-4 font-black uppercase text-right text-sm">
-                                            {printingDespesa.saldoFinal >= 0 ? 'Saldo a Receber' : 'Saldo Devedor / Próxima Viagem'}
+                                            {printingDespesa.saldoFinal > 0 ? 'Saldo Devedor / Próxima Viagem' : 'Saldo a Receber'}
                                         </td>
-                                        <td className={`py-2 px-4 text-right font-black text-lg whitespace-nowrap ${printingDespesa.saldoFinal >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                        <td className={`py-2 px-4 text-right font-black text-lg whitespace-nowrap ${printingDespesa.saldoFinal > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
                                             R$ {Math.abs(printingDespesa.saldoFinal).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                         </td>
                                     </tr>

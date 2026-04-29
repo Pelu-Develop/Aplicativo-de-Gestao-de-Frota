@@ -50,10 +50,6 @@ export default function Sidebar() {
                         <span className="material-symbols-outlined text-[18px]">account_balance_wallet</span>
                         <span className="text-xs font-semibold">Despesas (Acertos)</span>
                     </Link>
-                    <Link to="/conciliacao" className={`flex items-center gap-3 px-3 py-2 rounded-lg group transition-colors ${isActive('/conciliacao') ? 'bg-primary/10 text-primary border border-primary/20' : 'text-text-muted hover:bg-surface/80 hover:text-text-primary'}`}>
-                        <span className="material-symbols-outlined text-[18px]">rule</span>
-                        <span className="text-xs font-semibold">Conciliação</span>
-                    </Link>
                 </div>
 
                 <div className="flex flex-col gap-1 mt-2">

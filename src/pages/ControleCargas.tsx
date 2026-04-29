@@ -22,10 +22,13 @@ interface Rota {
     dataEnvioCorreios?: string;
     previsaoChegadaCorreios?: string;
     previsaoChegadaRota?: string;
+    dataSaidaRota?: string;
+    dataDescarregamentoRota?: string;
     entregue?: boolean;
     litrosAbastecidos?: number;
     valorLitroCombustivel?: number;
     formaPagamento?: string;
+    anexosEntregas?: string[];
 }
 
 interface Viagem {
@@ -910,7 +913,7 @@ export default function ControleCargas() {
                                                         <div className="flex flex-col"><span className="text-[9px] text-primary/80 uppercase font-black">Cliente</span><span className="font-bold truncate" title={rota.cliente}>{rota.cliente || '-'}</span></div>
                                                         <div className="flex flex-col"><span className="text-[9px] text-primary/80 uppercase font-black">Status</span><span className={`inline-flex px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-widest border w-fit ${getRotaStatusColor(rota.status)}`}>{rota.status}</span></div>
                                                         <div className="flex flex-col">
-                                                            <span className="text-[9px] text-primary/80 uppercase font-black">Previsão</span>
+                                                            <span className="text-[9px] text-primary/80 uppercase font-black">Data Chegada</span>
                                                             <span className={`font-bold truncate ${isAtrasado ? 'text-red-500' : ''}`}>
                                                                 {rota.previsaoChegadaRota ? new Date(rota.previsaoChegadaRota + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
                                                                 {isAtrasado && <span className="ml-1 text-[8px] animate-pulse">(! ATRASADO)</span>}
@@ -945,8 +948,16 @@ export default function ControleCargas() {
                                                 <input type="number" step="0.01" className="w-full bg-surface border border-border rounded-xl px-4 py-2.5 text-sm" value={rota.peso || ''} onChange={(e) => updateRota(index, 'peso', parseFloat(e.target.value) || 0)} disabled={formData.status === 'Finalizado'} />
                                             </label>
                                             <label className="flex flex-col gap-2">
-                                                <span className={`text-[10px] font-black uppercase tracking-widest ml-1 ${isAtrasado ? 'text-red-500' : 'text-primary/80'}`}>Prev. Motorista {isAtrasado && ' (ATRASADO)'}</span>
+                                                <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest ml-1">Data de Saída</span>
+                                                <input type="date" className="w-full bg-surface border border-border rounded-xl px-4 py-2.5 text-sm" value={rota.dataSaidaRota || ''} onChange={(e) => updateRota(index, 'dataSaidaRota', e.target.value)} disabled={formData.status === 'Finalizado'} />
+                                            </label>
+                                            <label className="flex flex-col gap-2">
+                                                <span className={`text-[10px] font-black uppercase tracking-widest ml-1 ${isAtrasado ? 'text-red-500' : 'text-primary/80'}`}>Data de Chegada {isAtrasado && ' (ATRASADO)'}</span>
                                                 <input type="date" className={`w-full bg-surface border ${isAtrasado ? 'border-red-500 text-red-500' : 'border-border'} rounded-xl px-4 py-2.5 text-sm`} value={rota.previsaoChegadaRota || ''} onChange={(e) => updateRota(index, 'previsaoChegadaRota', e.target.value)} disabled={formData.status === 'Finalizado'} />
+                                            </label>
+                                            <label className="flex flex-col gap-2">
+                                                <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest ml-1">Data Descarregamento</span>
+                                                <input type="date" className="w-full bg-surface border border-border rounded-xl px-4 py-2.5 text-sm" value={rota.dataDescarregamentoRota || ''} onChange={(e) => updateRota(index, 'dataDescarregamentoRota', e.target.value)} disabled={formData.status === 'Finalizado'} />
                                             </label>
                                         </div>
 
@@ -1046,6 +1057,43 @@ export default function ControleCargas() {
                                                 </span>
                                             </label>
                                         </div>
+
+                                        {rota.anexosEntregas && rota.anexosEntregas.length > 0 && (
+                                            <div className="grid grid-cols-1 gap-2 border border-primary/20 bg-primary/5 p-4 rounded-xl mt-4">
+                                                <div className="flex items-center gap-2 mb-2 border-b border-primary/20 pb-2">
+                                                    <span className="material-symbols-outlined text-[16px] text-primary">image</span>
+                                                    <span className="text-[10px] font-black uppercase text-primary tracking-widest">Comprovantes de Entrega / Despesas</span>
+                                                </div>
+                                                <div className="flex gap-4 overflow-x-auto custom-scrollbar pb-2">
+                                                    {rota.anexosEntregas.map((url: string, i: number) => (
+                                                        <div key={i} className="relative shrink-0 group">
+                                                            {url.includes('.pdf') || url.includes('token') === false /* basic check */ ? (
+                                                                <a href={url} target="_blank" rel="noreferrer" className="w-24 h-24 bg-surface border border-primary/30 rounded-xl flex items-center justify-center hover:bg-primary/10 transition-colors block">
+                                                                    <span className="material-symbols-outlined text-red-500 text-3xl">picture_as_pdf</span>
+                                                                </a>
+                                                            ) : (
+                                                                <a href={url} target="_blank" rel="noreferrer">
+                                                                    <img src={url} alt={`Comprovante ${i+1}`} className="w-24 h-24 object-cover rounded-xl border border-primary/30 hover:opacity-80 transition-opacity" />
+                                                                </a>
+                                                            )}
+                                                            {formData.status !== 'Finalizado' && (
+                                                                <button 
+                                                                    onClick={(e) => {
+                                                                        e.preventDefault();
+                                                                        const updatedAnexos = (rota.anexosEntregas || []).filter((_: any, idx: number) => idx !== i);
+                                                                        updateRota(index, 'anexosEntregas', updatedAnexos);
+                                                                    }}
+                                                                    className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                    title="Excluir Comprovante"
+                                                                >
+                                                                    <span className="material-symbols-outlined text-[14px]">delete</span>
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                         </div>
                                         )}
                                     </div>

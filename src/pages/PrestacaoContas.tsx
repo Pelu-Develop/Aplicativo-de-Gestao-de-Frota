@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, getDocs, updateDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../lib/firebase';
 import CompanyLogo from '../assets/logo-golden.png';
 import { maskCPF } from '../utils/masks';
 
@@ -18,7 +19,7 @@ interface ItemGasto {
     valor: number;
     data: string;
     observacao?: string;
-    anexo?: string;
+    anexos?: string[];
 }
 
 interface Carga {
@@ -42,7 +43,8 @@ export default function PrestacaoContas() {
     const [submitting, setSubmitting] = useState(false);
     const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
-    const [rotaAnexos, setRotaAnexos] = useState<{[key: string]: string[]}>({}); // cargaId -> array of attachments (one per route)
+    const [rotaAnexos, setRotaAnexos] = useState<{[key: string]: string[]}>({}); // `${cargaId}_${rotaIndex}` -> array of URLs
+    const [uploadingFiles, setUploadingFiles] = useState<{[key: string]: boolean}>({});
     const [existingDocId, setExistingDocId] = useState<string | null>(null);
 
     const getLocalDatetime = () => {
@@ -62,7 +64,7 @@ export default function PrestacaoContas() {
         valor: 0,
         data: new Date().toISOString().split('T')[0],
         observacao: '',
-        anexo: undefined
+        anexos: []
     });
 
     // Fetch Global Daily Rate and Available Trips
@@ -109,6 +111,18 @@ export default function PrestacaoContas() {
         setTimeout(() => setToast(null), 3000);
     };
 
+    const getRotaCardColor = (status: string) => {
+        switch (status) {
+            case 'Finalizado': return 'bg-emerald-500/10 border-emerald-500/50 shadow-emerald-500/10';
+            case 'Carregando':
+            case 'Viagem':
+            case 'Descarregando': return 'bg-amber-500/10 border-amber-500/50 shadow-amber-500/10';
+            case 'Indo para o cliente': return 'bg-blue-500/10 border-blue-500/50 shadow-blue-500/10';
+            case 'Problema': return 'bg-red-500/20 border-red-500/70 shadow-red-500/20';
+            default: return 'bg-background/50 border-primary/10';
+        }
+    };
+
     const handleIdentification = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!cpfInput) return;
@@ -128,7 +142,7 @@ export default function PrestacaoContas() {
                 // Buscar se existe algum formulário devolvido ou pendente para este motorista
                 try {
                     const qBruta = query(
-                        collection(db, 'despesas_brutas'), 
+                        collection(db, 'despesas_frota'), 
                         where('motoristaCPF', '==', cpfInput),
                         where('status', '==', 'devolvido')
                     );
@@ -192,33 +206,65 @@ export default function PrestacaoContas() {
         window.scrollTo({ top: document.body.scrollHeight / 3, behavior: 'smooth' });
     };
 
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, callback: (base64: string) => void) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+    const handleFirebaseUpload = async (file: File, path: string): Promise<string> => {
+        const fileRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
+        const uploadTask = await uploadBytesResumable(fileRef, file);
+        return await getDownloadURL(uploadTask.ref);
+    };
+
+    const uploadRotaAnexo = async (cargaId: string, rotaIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
         
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            callback(reader.result as string);
-        };
-        reader.readAsDataURL(file);
+        const key = `${cargaId}_${rotaIndex}`;
+        setUploadingFiles(prev => ({...prev, [key]: true}));
+        
+        try {
+            const urls = await Promise.all(files.map(f => handleFirebaseUpload(f, 'comprovantes')));
+            setRotaAnexos(prev => {
+                const next = { ...prev };
+                next[key] = [...(next[key] || []), ...urls];
+                return next;
+            });
+            showToast('Imagens salvas com sucesso!');
+        } catch (err) {
+            console.error(err);
+            showToast('Erro ao enviar imagens', 'error');
+        } finally {
+            setUploadingFiles(prev => ({...prev, [key]: false}));
+        }
     };
 
-    const handleRotaAnexo = (cargaId: string, rotaIndex: number, base64: string) => {
+    const removeRotaAnexo = (cargaId: string, rotaIndex: number, imgIndex: number) => {
+        const key = `${cargaId}_${rotaIndex}`;
         setRotaAnexos(prev => {
-            const current = prev[cargaId] || [];
-            const next = [...current];
-            next[rotaIndex] = base64;
-            return { ...prev, [cargaId]: next };
+            const next = { ...prev };
+            if (next[key]) {
+                next[key] = next[key].filter((_, i) => i !== imgIndex);
+            }
+            return next;
         });
     };
 
-    const removeRotaAnexo = (cargaId: string, rotaIndex: number) => {
-        setRotaAnexos(prev => {
-            const current = prev[cargaId] || [];
-            const next = [...current];
-            next[rotaIndex] = '';
-            return { ...prev, [cargaId]: next };
-        });
+    const uploadDespesaAnexo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+        
+        setUploadingFiles(prev => ({...prev, 'despesa_atual': true}));
+        
+        try {
+            const urls = await Promise.all(files.map(f => handleFirebaseUpload(f, 'despesas')));
+            setCurrentItem(prev => ({
+                ...prev,
+                anexos: [...(prev.anexos || []), ...urls]
+            }));
+            showToast('Fotos anexadas!');
+        } catch (err) {
+            console.error(err);
+            showToast('Erro ao anexar fotos', 'error');
+        } finally {
+            setUploadingFiles(prev => ({...prev, 'despesa_atual': false}));
+        }
     };
 
     const calculateDays = () => {
@@ -258,7 +304,7 @@ export default function PrestacaoContas() {
                     valor: g.valor,
                     descricao: g.observacao || '',
                     data: g.data,
-                    anexo: g.anexo || ''
+                    anexos: g.anexos || []
                 })),
                 rotaAnexos: rotaAnexos,
                 status: 'pendente',
@@ -270,15 +316,41 @@ export default function PrestacaoContas() {
             };
 
             if (existingDocId) {
-                await updateDoc(doc(db, 'despesas_brutas', existingDocId), {
+                await updateDoc(doc(db, 'despesas_frota', existingDocId), {
                     ...payload,
                     status: 'pendente', // Volta para pendente após correção
                     dataAtualizacao: serverTimestamp()
                 });
             } else {
-                await addDoc(collection(db, 'despesas_brutas'), payload);
+                await addDoc(collection(db, 'despesas_frota'), payload);
             }
             
+            // Atualizar as Viagens com as fotos
+            const cargasToUpdate = new Set(Object.keys(rotaAnexos).map(k => k.split('_')[0]));
+            for (const cId of cargasToUpdate) {
+                const cargaAtual = cargas.find(c => c.id === cId);
+                if (cargaAtual && cargaAtual.rotas) {
+                    const rotasAtualizadas = [...cargaAtual.rotas];
+                    let hasUpdates = false;
+                    Object.keys(rotaAnexos).forEach(key => {
+                        const [keyCId, keyRi] = key.split('_');
+                        if (keyCId === cId) {
+                            const index = parseInt(keyRi);
+                            if (rotasAtualizadas[index]) {
+                                // Remove duplicatas de URLs caso a pessoa edite
+                                const existentes = rotasAtualizadas[index].anexosEntregas || [];
+                                const novos = rotaAnexos[key] || [];
+                                rotasAtualizadas[index].anexosEntregas = Array.from(new Set([...existentes, ...novos]));
+                                hasUpdates = true;
+                            }
+                        }
+                    });
+                    if (hasUpdates) {
+                        await updateDoc(doc(db, 'cargas', cId), { rotas: rotasAtualizadas });
+                    }
+                }
+            }
+
             showToast('Prestação de contas enviada com sucesso!');
 
             setTimeout(() => {
@@ -412,7 +484,7 @@ export default function PrestacaoContas() {
                                             </div>
                                             <div className="space-y-2">
                                                 {c.rotas && Array.isArray(c.rotas) ? c.rotas.map((r, ri) => (
-                                                    <div key={ri} className="flex flex-col bg-background/50 p-2 rounded-xl border border-primary/10 gap-2">
+                                                    <div key={ri} className={`flex flex-col p-2 rounded-xl border gap-2 transition-all duration-300 ${getRotaCardColor(r.status)}`}>
                                                         <div className="flex justify-between items-center">
                                                             <span className="text-[8px] font-black text-primary uppercase">Rota {ri + 1}</span>
                                                             <span className="text-[8px] font-bold text-primary/80 uppercase">{r.status}</span>
@@ -423,26 +495,50 @@ export default function PrestacaoContas() {
                                                         
                                                         {/* Route Attachment UI */}
                                                         <div className="mt-1 border-t border-primary/10 pt-2">
-                                                            {rotaAnexos[c.id]?.[ri] ? (
-                                                                <div className="relative group">
-                                                                    <img src={rotaAnexos[c.id][ri]} alt="Comprovante" className="w-full h-32 object-cover rounded-lg border border-primary/20" />
-                                                                    <button 
-                                                                        onClick={() => removeRotaAnexo(c.id, ri)}
-                                                                        className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full shadow-lg"
-                                                                    >
-                                                                        <span className="material-symbols-outlined text-sm">delete</span>
-                                                                    </button>
+                                                            {rotaAnexos[`${c.id}_${ri}`] && rotaAnexos[`${c.id}_${ri}`].length > 0 ? (
+                                                                <div className="flex flex-col gap-2">
+                                                                    <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                                                                        {rotaAnexos[`${c.id}_${ri}`].map((url, imgIndex) => (
+                                                                            <div key={imgIndex} className="relative group shrink-0">
+                                                                                {url.includes('.pdf') ? (
+                                                                                    <div className="w-20 h-20 bg-surface border border-primary/20 rounded-lg flex items-center justify-center">
+                                                                                        <span className="material-symbols-outlined text-red-500 text-3xl">picture_as_pdf</span>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <img src={url} alt="Comprovante" className="w-20 h-20 object-cover rounded-lg border border-primary/20" />
+                                                                                )}
+                                                                                <button 
+                                                                                    onClick={() => removeRotaAnexo(c.id, ri, imgIndex)}
+                                                                                    className="absolute top-1 right-1 bg-red-500 text-white p-0.5 rounded-full shadow-lg"
+                                                                                >
+                                                                                    <span className="material-symbols-outlined text-[12px]">delete</span>
+                                                                                </button>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                    <label className="flex items-center gap-2 text-primary cursor-pointer hover:underline text-[10px] font-black uppercase">
+                                                                        <span className="material-symbols-outlined text-sm">add_a_photo</span> Adicionar mais
+                                                                        <input type="file" multiple accept="image/*,application/pdf" className="hidden" onChange={(e) => uploadRotaAnexo(c.id, ri, e)} />
+                                                                    </label>
                                                                 </div>
                                                             ) : (
-                                                                <label className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-primary/20 rounded-xl bg-primary/5 cursor-pointer hover:bg-primary/10 transition-colors">
-                                                                    <span className="material-symbols-outlined text-primary text-lg">add_a_photo</span>
-                                                                    <span className="text-[8px] font-black text-primary uppercase mt-1">Anexar Comprovante de Entrega</span>
+                                                                <label className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-primary/20 rounded-xl bg-primary/5 cursor-pointer hover:bg-primary/10 transition-colors relative">
+                                                                    {uploadingFiles[`${c.id}_${ri}`] ? (
+                                                                        <span className="material-symbols-outlined animate-spin text-primary text-xl">sync</span>
+                                                                    ) : (
+                                                                        <>
+                                                                            <span className="material-symbols-outlined text-primary text-lg">add_a_photo</span>
+                                                                            <span className="text-[8px] font-black text-primary uppercase mt-1 flex items-center gap-1">Anexar Comprovantes <span className="text-red-500 material-symbols-outlined text-[10px]">close</span></span>
+                                                                        </>
+                                                                    )}
                                                                     <input 
                                                                         type="file" 
+                                                                        multiple
                                                                         accept="image/*,application/pdf" 
                                                                         capture="environment"
                                                                         className="hidden" 
-                                                                        onChange={(e) => handleFileUpload(e, (b64) => handleRotaAnexo(c.id, ri, b64))}
+                                                                        disabled={uploadingFiles[`${c.id}_${ri}`]}
+                                                                        onChange={(e) => uploadRotaAnexo(c.id, ri, e)}
                                                                     />
                                                                 </label>
                                                             )}
@@ -541,26 +637,50 @@ export default function PrestacaoContas() {
                                 <label className="flex flex-col gap-2">
                                     <div className="flex justify-between items-center px-1">
                                         <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest">Valor da Despesa</span>
-                                        {currentItem.anexo ? (
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[8px] font-black text-emerald-500 uppercase">Foto Anexada</span>
-                                                <button onClick={() => setCurrentItem({...currentItem, anexo: undefined})} className="text-red-500">
-                                                    <span className="material-symbols-outlined text-sm">delete</span>
-                                                </button>
-                                            </div>
-                                        ) : (
+                                        <div className="flex items-center gap-2">
+                                            {currentItem.anexos && currentItem.anexos.length > 0 && (
+                                                <div className="flex gap-2">
+                                                    {currentItem.anexos.map((url, i) => (
+                                                        <div key={i} className="relative group shrink-0">
+                                                            {url.includes('.pdf') ? (
+                                                                <div className="w-8 h-8 bg-surface rounded flex items-center justify-center border border-primary/20"><span className="material-symbols-outlined text-red-500 text-sm">picture_as_pdf</span></div>
+                                                            ) : (
+                                                                <img src={url} alt="Comprovante" className="w-8 h-8 object-cover rounded border border-primary/20" />
+                                                            )}
+                                                            <button 
+                                                                type="button" 
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    setCurrentItem({...currentItem, anexos: (currentItem.anexos || []).filter((_, idx) => idx !== i)});
+                                                                }}
+                                                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0 shadow-md flex items-center justify-center size-4"
+                                                            >
+                                                                <span className="material-symbols-outlined text-[10px]">close</span>
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                             <label className="flex items-center gap-1 text-primary cursor-pointer hover:scale-105 transition-transform">
-                                                <span className="material-symbols-outlined text-sm">add_a_photo</span>
-                                                <span className="text-[8px] font-black uppercase tracking-widest">Anexar Comprovante</span>
+                                                {uploadingFiles['despesa_atual'] ? (
+                                                    <span className="material-symbols-outlined text-sm animate-spin">sync</span>
+                                                ) : (
+                                                    <>
+                                                        <span className="material-symbols-outlined text-sm">add_a_photo</span>
+                                                        <span className="text-[8px] font-black uppercase tracking-widest">Anexar Fotos</span>
+                                                    </>
+                                                )}
                                                 <input 
                                                     type="file" 
+                                                    multiple
                                                     accept="image/*" 
                                                     capture="environment"
                                                     className="hidden" 
-                                                    onChange={(e) => handleFileUpload(e, (b64) => setCurrentItem({...currentItem, anexo: b64}))} 
+                                                    disabled={uploadingFiles['despesa_atual']}
+                                                    onChange={uploadDespesaAnexo} 
                                                 />
                                             </label>
-                                        )}
+                                        </div>
                                     </div>
                                     <div className="relative">
                                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-primary font-black">R$</span>
@@ -616,19 +736,29 @@ export default function PrestacaoContas() {
                                                 <span className="material-symbols-outlined text-[14px]">calendar_today</span>
                                                 <span className="text-[10px] font-bold">{new Date(g.data + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
                                             </div>
-                                            {g.anexo && (
-                                                <div className="mt-2 relative">
-                                                    <img src={g.anexo} alt="Comprovante" className="w-full h-24 object-cover rounded-lg border border-primary/10" />
-                                                    <button 
-                                                        onClick={() => {
-                                                            const newGastos = [...gastos];
-                                                            newGastos[i].anexo = '';
-                                                            setGastos(newGastos);
-                                                        }}
-                                                        className="absolute top-1 right-1 bg-red-500 text-white p-0.5 rounded-full"
-                                                    >
-                                                        <span className="material-symbols-outlined text-[12px]">delete</span>
-                                                    </button>
+                                            {g.anexos && g.anexos.length > 0 && (
+                                                <div className="mt-2 flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                                                    {g.anexos.map((url, imgIdx) => (
+                                                        <div key={imgIdx} className="relative shrink-0 mt-2">
+                                                            {url.includes('.pdf') ? (
+                                                                <div className="w-16 h-16 bg-surface rounded-lg flex items-center justify-center border border-primary/10"><span className="material-symbols-outlined text-red-500 text-2xl">picture_as_pdf</span></div>
+                                                            ) : (
+                                                                <img src={url} alt="Comprovante" className="w-16 h-16 object-cover rounded-lg border border-primary/10" />
+                                                            )}
+                                                            <button 
+                                                                type="button" 
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    const updatedGastos = [...gastos];
+                                                                    updatedGastos[i].anexos = (updatedGastos[i].anexos || []).filter((_, idx) => idx !== imgIdx);
+                                                                    setGastos(updatedGastos);
+                                                                }}
+                                                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md flex items-center justify-center"
+                                                            >
+                                                                <span className="material-symbols-outlined text-[12px]">close</span>
+                                                            </button>
+                                                        </div>
+                                                    ))}
                                                 </div>
                                             )}
                                             {g.observacao && (

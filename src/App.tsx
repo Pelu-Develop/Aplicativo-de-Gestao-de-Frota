@@ -11,7 +11,6 @@ import Motoristas from './pages/Motoristas';
 import ControleCargas from './pages/ControleCargas';
 import Comissoes from './pages/Comissoes';
 import Despesas from './pages/Despesas';
-import Conciliacao from './pages/Conciliacao';
 import Perfil from './pages/Perfil';
 import Login from './pages/Login';
 import PrestacaoContas from './pages/PrestacaoContas';
@@ -41,7 +40,6 @@ function App() {
               <Route path="clientes" element={<Clientes />} />
               <Route path="veiculos" element={<Veiculos />} />
 
-              <Route path="conciliacao" element={<Conciliacao />} />
               <Route path="perfil" element={<Perfil />} />
             </Route>
           </Route>
