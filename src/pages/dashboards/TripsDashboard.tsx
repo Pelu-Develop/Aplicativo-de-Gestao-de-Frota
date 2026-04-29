@@ -79,8 +79,7 @@ export default function TripsDashboard() {
         return Object.entries(counts).map(([date, trips]) => ({ date, trips }));
     }, [viagens]);
 
-    // Average Transit Time (Mocked for now since we don't have arrival timestamp in many records, but logic ready)
-    const avgTime = "28.5h"; // Placeholder for more complex diff calc
+
 
     if (loading) return (
         <div className="flex items-center justify-center min-h-[400px]">

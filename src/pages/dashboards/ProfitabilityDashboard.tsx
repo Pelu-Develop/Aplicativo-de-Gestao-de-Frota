@@ -1,5 +1,5 @@
 import { collection, query, onSnapshot, updateDoc, doc } from 'firebase/firestore';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { db } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import {
