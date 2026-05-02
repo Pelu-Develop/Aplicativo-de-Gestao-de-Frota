@@ -17,6 +17,7 @@ import PrestacaoContas from './pages/PrestacaoContas';
 import Clientes from './pages/Clientes';
 import Veiculos from './pages/Veiculos';
 import ResumoDia from './pages/ResumoDia';
+import Manutencao from './pages/Manutencao';
 
 
 function App() {
@@ -41,6 +42,7 @@ function App() {
               <Route path="despesas" element={<Despesas />} />
               <Route path="clientes" element={<Clientes />} />
               <Route path="veiculos" element={<Veiculos />} />
+              <Route path="manutencao" element={<Manutencao />} />
 
               <Route path="perfil" element={<Perfil />} />
             </Route>

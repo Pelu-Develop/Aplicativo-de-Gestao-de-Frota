@@ -29,6 +29,7 @@ interface Rota {
     litrosAbastecidos?: number;
     valorLitroCombustivel?: number;
     formaPagamento?: string;
+    valorComissao?: number;
     anexosEntregas?: string[];
 }
 
@@ -197,8 +198,6 @@ export default function ControleCargas() {
         rotas: Rota[];
         status: string;
         linkComprovante: string;
-        comissionada: boolean;
-        valorComissao: number;
         litrosAbastecidos: number;
         valorLitroCombustivel: number;
         valorTotalCombustivel: number;
@@ -213,8 +212,6 @@ export default function ControleCargas() {
         rotas: [],
         status: 'Em planejamento',
         linkComprovante: '',
-        comissionada: false,
-        valorComissao: 500,
         litrosAbastecidos: 0,
         valorLitroCombustivel: 0,
         valorTotalCombustivel: 0
@@ -309,7 +306,8 @@ export default function ControleCargas() {
         if (action === 'new' && !loading) {
             openCreateModal();
             if (isCommission) {
-                setFormData(prev => ({ ...prev, comissionada: true }));
+                // Ao criar uma nova viagem vindo de comissões, podemos marcar a primeira rota
+                // Mas como o addRota é chamado no openCreateModal, podemos apenas esperar o usuário marcar
             }
             setSearchParams({}, { replace: true });
         }
@@ -355,8 +353,6 @@ export default function ControleCargas() {
             }],
             status: 'Em planejamento',
             linkComprovante: '',
-            comissionada: false,
-            valorComissao: 500,
             litrosAbastecidos: 0,
             valorLitroCombustivel: 0,
             valorTotalCombustivel: 0
@@ -398,8 +394,6 @@ export default function ControleCargas() {
             rotas: rotas.map(r => ({ ...r, status: r.status || 'Indo para o cliente' })),
             status: v.status || 'Em planejamento',
             linkComprovante: v.linkComprovante || '',
-            comissionada: v.comissionada || false,
-            valorComissao: v.valorComissao !== undefined ? v.valorComissao : 500,
             litrosAbastecidos: v.litrosAbastecidos || 0,
             valorLitroCombustivel: v.valorLitroCombustivel || 0,
             valorTotalCombustivel: v.valorTotalCombustivel || 0
@@ -425,7 +419,7 @@ export default function ControleCargas() {
             const peso = formData.rotas.reduce((acc, r) => acc + r.peso, 0);
             const valorFrete = formData.rotas.reduce((acc, r) => acc + (Number(r.valorFrete) || 0), 0);
             const valorTotalCombustivel = formData.rotas.reduce((acc, r) => acc + ((Number(r.litrosAbastecidos) || 0) * (Number(r.valorLitroCombustivel) || 0)), 0);
-            const isComissionada = formData.comissionada || formData.rotas.some(r => r.comissionada);
+            const isComissionada = formData.rotas.some(r => r.comissionada);
             
             const payload = {
                 ...formData,
@@ -607,7 +601,8 @@ export default function ControleCargas() {
                     origem: novaOrigem, destino: '', cliente: '', peso: 0, valorFrete: 0,
                     percentualAdiantamento: 30, adiantamentoPago: false, saldoPago: false,
                     codigoRastreio: '', entregueDocumento: false, dataEntregaDocumento: '',
-                    status: 'Indo para o cliente'
+                    status: 'Indo para o cliente',
+                    valorComissao: 500
                 }
             ]
         });
@@ -890,19 +885,7 @@ export default function ControleCargas() {
                                         </div>
                                         <h4 className="text-xs font-black uppercase text-text-primary tracking-widest">Configurações do Ciclo</h4>
                                     </div>
-                                    <label className="flex items-center gap-3 bg-surface border border-border px-5 py-2.5 rounded-2xl cursor-pointer hover:border-primary transition-all group">
-                                        <input 
-                                            type="checkbox" 
-                                            className="rounded border-border text-primary focus:ring-primary size-5" 
-                                            checked={formData.comissionada} 
-                                            onChange={(e) => setFormData(prev => ({ ...prev, comissionada: e.target.checked }))} 
-                                        />
-                                        <div className="flex flex-col">
-                                            <span className="text-[10px] font-black uppercase text-text-primary group-hover:text-primary transition-colors">Viagem Comissionada</span>
-                                            <span className="text-[8px] font-bold text-text-muted uppercase tracking-tighter">Enviar para aba de comissões imediatamente</span>
-                                        </div>
-                                    </label>
-                                </div>
+                                    </div>
                                 
                                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                                 <div className="lg:col-span-3 space-y-4">

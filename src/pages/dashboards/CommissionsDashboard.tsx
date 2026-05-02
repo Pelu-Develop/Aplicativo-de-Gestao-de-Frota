@@ -36,13 +36,33 @@ export default function CommissionsDashboard() {
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            // Sort in memory to avoid index requirement
-            const sortedList = list.sort((a: any, b: any) => {
+            const flattenedList: any[] = [];
+            
+            snapshot.docs.forEach(docSnap => {
+                const trip = docSnap.data();
+                if (trip.rotas && Array.isArray(trip.rotas)) {
+                    trip.rotas.forEach((rota: any) => {
+                        if (rota.comissionada) {
+                            flattenedList.push({
+                                ...rota,
+                                tripId: docSnap.id,
+                                codigoViagem: trip.codigoViagem,
+                                motoristaNome: trip.motoristaNome,
+                                dataSaida: trip.dataSaida, // Usamos a data de saída do ciclo para agrupamento
+                                tripStatus: trip.status
+                            });
+                        }
+                    });
+                }
+            });
+            
+            // Sort in memory
+            const sortedList = flattenedList.sort((a: any, b: any) => {
                 const dateA = a.dataSaida || '';
                 const dateB = b.dataSaida || '';
                 return dateB.localeCompare(dateA);
             });
+            
             setComissoes(sortedList);
             setLoading(false);
         }, (error) => {
@@ -53,14 +73,14 @@ export default function CommissionsDashboard() {
     }, []);
 
     // Aggregations
-    const totalComissoes = comissoes.reduce((acc, curr) => acc + (curr.valorComissao || 0), 0);
+    const totalComissoes = comissoes.reduce((acc, curr) => acc + (Number(curr.valorComissao) || 0), 0);
     const mediaPorViagem = totalComissoes / (comissoes.length || 1);
 
     // Group by month
     const monthlyData = comissoes.reduce((acc: any, curr) => {
         if (!curr.dataSaida) return acc;
         const month = curr.dataSaida.substring(0, 7); // YYYY-MM
-        acc[month] = (acc[month] || 0) + (curr.valorComissao || 0);
+        acc[month] = (acc[month] || 0) + (Number(curr.valorComissao) || 0);
         return acc;
     }, {});
 
@@ -74,7 +94,7 @@ export default function CommissionsDashboard() {
     // Group by Driver
     const driverCommissions = comissoes.reduce((acc: any, curr) => {
         const driver = curr.motoristaNome || 'N/A';
-        acc[driver] = (acc[driver] || 0) + (curr.valorComissao || 0);
+        acc[driver] = (acc[driver] || 0) + (Number(curr.valorComissao) || 0);
         return acc;
     }, {});
 
@@ -85,7 +105,7 @@ export default function CommissionsDashboard() {
 
     // Group by Status
     const statusCounts = comissoes.reduce((acc: any, curr) => {
-        const status = curr.status || 'Pendente';
+        const status = curr.status || 'Indo para o cliente';
         acc[status] = (acc[status] || 0) + 1;
         return acc;
     }, {});
@@ -111,7 +131,7 @@ export default function CommissionsDashboard() {
                         </div>
                         Painel de Comissões
                     </h1>
-                    <p className="text-text-muted text-[10px] font-black uppercase tracking-widest mt-1">Análise estratégica de rentabilidade e bonificação</p>
+                    <p className="text-text-muted text-[10px] font-black uppercase tracking-widest mt-1">Análise estratégica de rentabilidade e bonificação por rota</p>
                 </div>
                 <div className="flex items-center gap-3">
                     <div className="px-4 py-2 bg-surface border border-border rounded-xl shadow-sm flex items-center gap-3">
@@ -154,7 +174,7 @@ export default function CommissionsDashboard() {
                     </div>
                     <div>
                         <h4 className="text-3xl font-black text-text-primary tracking-tighter">R$ {mediaPorViagem.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h4>
-                        <p className="text-[9px] text-text-muted font-bold uppercase mt-1">Por viagem comissionada</p>
+                        <p className="text-[9px] text-text-muted font-bold uppercase mt-1">Por rota comissionada</p>
                     </div>
                 </div>
 
@@ -166,11 +186,11 @@ export default function CommissionsDashboard() {
                         <div className="p-2 bg-amber-500/10 text-amber-500 rounded-xl">
                             <Calendar size={18} />
                         </div>
-                        <span className="text-[10px] font-black text-text-muted uppercase tracking-widest whitespace-nowrap">Total Viagens</span>
+                        <span className="text-[10px] font-black text-text-muted uppercase tracking-widest whitespace-nowrap">Total Rotas</span>
                     </div>
                     <div>
-                        <h4 className="text-3xl font-black text-text-primary tracking-tighter">{comissoes.length} Ops</h4>
-                        <p className="text-[9px] text-text-muted font-bold uppercase mt-1">Viagens realizadas à comissão</p>
+                        <h4 className="text-3xl font-black text-text-primary tracking-tighter">{comissoes.length} Rotas</h4>
+                        <p className="text-[9px] text-text-muted font-bold uppercase mt-1">Rotas realizadas à comissão</p>
                     </div>
                 </div>
 
@@ -197,7 +217,7 @@ export default function CommissionsDashboard() {
                     <div className="flex items-center justify-between mb-8">
                         <div>
                             <h3 className="text-xl font-black text-text-primary uppercase tracking-tight">Evolução de Comissões</h3>
-                            <p className="text-text-muted text-[10px] font-black uppercase tracking-widest">Faturamento mensal acumulado</p>
+                            <p className="text-text-muted text-[10px] font-black uppercase tracking-widest">Faturamento mensal acumulado (Rotas)</p>
                         </div>
                         <div className="p-2 bg-background-dark border border-border rounded-xl">
                              <TrendingUp size={20} className="text-primary" />
@@ -227,8 +247,8 @@ export default function CommissionsDashboard() {
 
                 {/* Efficiency Pie Chart */}
                 <div className="bg-surface border border-border rounded-[40px] p-8 shadow-sm flex flex-col">
-                    <h3 className="text-xl font-black text-text-primary uppercase tracking-tight mb-2">Saúde da Carteira</h3>
-                    <p className="text-text-muted text-[10px] font-black uppercase tracking-widest mb-8">Status das comissões em aberto</p>
+                    <h3 className="text-xl font-black text-text-primary uppercase tracking-tight mb-2">Distribuição por Status</h3>
+                    <p className="text-text-muted text-[10px] font-black uppercase tracking-widest mb-8">Volume de rotas por estágio operacional</p>
 
                     <div className="flex-1 flex flex-col items-center justify-center">
                         <div className="h-[250px] w-full">
@@ -265,9 +285,9 @@ export default function CommissionsDashboard() {
                     <div className="mt-8 pt-8 border-t border-border flex items-center justify-between">
                          <div className="flex items-center gap-2">
                              <PieIcon size={16} className="text-text-muted" />
-                             <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">Saldo Realizado</span>
+                             <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">Rotas Ativas</span>
                          </div>
-                         <span className="text-sm font-black text-text-primary">84%</span>
+                         <span className="text-sm font-black text-text-primary">{comissoes.length}</span>
                     </div>
                 </div>
             </div>

@@ -13,24 +13,39 @@ import {
     Target
 } from 'lucide-react';
 
-interface Viagem {
+interface Rota {
     id: string;
-    codigoViagem: string;
-    motoristaNome: string;
     origem: string;
     destino: string;
-    dataSaida: string;
-    dataCarregamento: string;
+    cliente: string;
     valorFrete: number;
     percentualAdiantamento: number;
-    comissionada: boolean;
-    valorComissao: number;
+    comissionada?: boolean;
+    valorComissao?: number;
     status: string;
+    dataCarregamento?: string;
+    dataSaidaRota?: string;
+}
+
+interface ComissaoItem {
+    id: string; // tripId_routeId
+    tripId: string;
+    routeId: string;
+    codigoViagem: string;
+    motoristaNome: string;
+    dataSaida: string; // trip level
+    dataCarregamento: string; // route level
+    origem: string;
+    destino: string;
     cliente: string;
+    valorFrete: number;
+    percentualAdiantamento: number;
+    valorComissao: number;
+    tripRaw: any;
 }
 
 export default function Comissoes() {
-    const [comissoes, setComissoes] = useState<Viagem[]>([]);
+    const [comissoes, setComissoes] = useState<ComissaoItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [filters, setFilters] = useState({
@@ -60,13 +75,38 @@ export default function Comissoes() {
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const list = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            } as Viagem));
+            const flattenedList: ComissaoItem[] = [];
             
-            // Sort in memory to avoid Firebase Composite Index requirement
-            const sortedList = list.sort((a, b) => {
+            snapshot.docs.forEach(docSnap => {
+                const trip = docSnap.data();
+                const tripId = docSnap.id;
+                
+                if (trip.rotas && Array.isArray(trip.rotas)) {
+                    trip.rotas.forEach((rota: Rota) => {
+                        if (rota.comissionada) {
+                            flattenedList.push({
+                                id: `${tripId}_${rota.id}`,
+                                tripId: tripId,
+                                routeId: rota.id,
+                                codigoViagem: trip.codigoViagem || '---',
+                                motoristaNome: trip.motoristaNome || '---',
+                                dataSaida: trip.dataSaida || '',
+                                dataCarregamento: rota.dataCarregamento || trip.dataCarregamento || '',
+                                origem: rota.origem || '---',
+                                destino: rota.destino || '---',
+                                cliente: rota.cliente || '---',
+                                valorFrete: Number(rota.valorFrete) || 0,
+                                percentualAdiantamento: Number(rota.percentualAdiantamento) || 0,
+                                valorComissao: Number(rota.valorComissao) || 0,
+                                tripRaw: { ...trip, id: tripId }
+                            });
+                        }
+                    });
+                }
+            });
+            
+            // Sort in memory
+            const sortedList = flattenedList.sort((a, b) => {
                 const dateA = a.dataSaida || '';
                 const dateB = b.dataSaida || '';
                 return dateB.localeCompare(dateA);
@@ -82,30 +122,52 @@ export default function Comissoes() {
         return () => unsubscribe();
     }, []);
 
-    const updateCommissionValue = async (id: string, value: number) => {
+    const updateCommissionValue = async (item: ComissaoItem, value: number) => {
         try {
-            const docRef = doc(db, 'cargas', id);
-            await updateDoc(docRef, { valorComissao: value });
+            const tripRef = doc(db, 'cargas', item.tripId);
+            const updatedRotas = item.tripRaw.rotas.map((r: any) => {
+                if (r.id === item.routeId) {
+                    return { ...r, valorComissao: value };
+                }
+                return r;
+            });
+            await updateDoc(tripRef, { rotas: updatedRotas });
         } catch (error) {
             console.error("Erro ao atualizar valor da comissão:", error);
         }
     };
 
-    const removeCommission = async (id: string) => {
-        if (!confirm('Deseja remover esta viagem das comissões? (Isso irá desmarcar a opção Comissionada na viagem)')) return;
+    const removeCommission = async (item: ComissaoItem) => {
+        if (!confirm('Deseja remover esta rota das comissões?')) return;
         try {
-            const docRef = doc(db, 'cargas', id);
-            await updateDoc(docRef, { comissionada: false });
+            const tripRef = doc(db, 'cargas', item.tripId);
+            const updatedRotas = item.tripRaw.rotas.map((r: any) => {
+                if (r.id === item.routeId) {
+                    return { ...r, comissionada: false };
+                }
+                return r;
+            });
+            
+            // Check if there are any comissioned routes left in the trip
+            const anyLeft = updatedRotas.some((r: any) => r.comissionada);
+            
+            await updateDoc(tripRef, { 
+                rotas: updatedRotas,
+                comissionada: anyLeft
+            });
         } catch (error) {
             console.error("Erro ao remover comissão:", error);
         }
     };
 
     const weekComissoes = comissoes.filter(c => {
+        // Use trip dataSaida for filtering by week
         const matchesDate = c.dataSaida >= weekRange.start && c.dataSaida <= weekRange.end;
         const matchesSearch = c.codigoViagem?.toLowerCase().includes(filters.search.toLowerCase()) ||
                              c.motoristaNome?.toLowerCase().includes(filters.search.toLowerCase()) ||
-                             c.cliente?.toLowerCase().includes(filters.search.toLowerCase());
+                             c.cliente?.toLowerCase().includes(filters.search.toLowerCase()) ||
+                             c.origem?.toLowerCase().includes(filters.search.toLowerCase()) ||
+                             c.destino?.toLowerCase().includes(filters.search.toLowerCase());
         return matchesDate && matchesSearch;
     });
 
@@ -187,7 +249,7 @@ export default function Comissoes() {
                         <div className="p-2 bg-blue-500/10 text-blue-500 rounded-xl">
                             <Calendar size={18} />
                         </div>
-                        <span className="text-[10px] font-black text-text-muted uppercase tracking-widest whitespace-nowrap">Viagens na Semana</span>
+                        <span className="text-[10px] font-black text-text-muted uppercase tracking-widest whitespace-nowrap">Rotas na Semana</span>
                     </div>
                     <div>
                         <h4 className="text-2xl font-black text-text-primary tracking-tighter">{totalViagensSemana} Atendidas</h4>
@@ -203,7 +265,7 @@ export default function Comissoes() {
                         <div className="p-2 bg-amber-500/10 text-amber-500 rounded-xl">
                             <Briefcase size={18} />
                         </div>
-                        <span className="text-[10px] font-black text-text-muted uppercase tracking-widest whitespace-nowrap">Total de Viagens</span>
+                        <span className="text-[10px] font-black text-text-muted uppercase tracking-widest whitespace-nowrap">Total de Comissões</span>
                     </div>
                     <div>
                         <h4 className="text-2xl font-black text-text-primary tracking-tighter">{totalViagensHistorico} Total</h4>
@@ -219,7 +281,7 @@ export default function Comissoes() {
                         <div className="p-2 bg-purple-500/10 text-purple-500 rounded-xl">
                             <Target size={18} />
                         </div>
-                        <span className="text-[10px] font-black text-text-muted uppercase tracking-widest whitespace-nowrap">Média por Viagem</span>
+                        <span className="text-[10px] font-black text-text-muted uppercase tracking-widest whitespace-nowrap">Média por Rota</span>
                     </div>
                     <div>
                         <h4 className="text-2xl font-black text-text-primary tracking-tighter">R$ {mediaComissao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h4>
@@ -281,7 +343,7 @@ export default function Comissoes() {
                                 <div className="w-full h-1.5 bg-background-dark rounded-full overflow-hidden">
                                     <div className="h-full bg-primary" style={{ width: '75%' }}></div>
                                 </div>
-                                <p className="text-[10px] text-text-muted font-bold italic">* Considera todas as viagens marcadas como comissionadas.</p>
+                                <p className="text-[10px] text-text-muted font-bold italic">* Considera todas as rotas marcadas como comissionadas.</p>
                             </div>
 
                             <div className="flex flex-col justify-between gap-4">
@@ -326,7 +388,7 @@ export default function Comissoes() {
                             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-sm">search</span>
                             <input 
                                 type="text" 
-                                placeholder="Motorista, Cliente ou Código..." 
+                                placeholder="Motorista, Cliente, Rota ou Código..." 
                                 className="w-full bg-background border border-border rounded-xl pl-9 pr-4 py-2.5 text-xs focus:border-primary outline-none transition-all"
                                 value={filters.search}
                                 onChange={(e) => setFilters({...filters, search: e.target.value})}
@@ -343,8 +405,8 @@ export default function Comissoes() {
                         <thead>
                             <tr className="bg-background-dark/50 border-b border-border">
                                 <th className="px-6 py-4 text-[10px] font-black text-text-muted uppercase tracking-widest">Cód / Cliente</th>
-                                <th className="px-6 py-4 text-[10px] font-black text-text-muted uppercase tracking-widest">Motorista</th>
-                                <th className="px-6 py-4 text-[10px] font-black text-text-muted uppercase tracking-widest">Frete Total</th>
+                                <th className="px-6 py-4 text-[10px] font-black text-text-muted uppercase tracking-widest">Motorista / Rota</th>
+                                <th className="px-6 py-4 text-[10px] font-black text-text-muted uppercase tracking-widest">Frete (Rota)</th>
                                 <th className="px-6 py-4 text-[10px] font-black text-text-muted uppercase tracking-widest">Adiantamento (%)</th>
                                 <th className="px-6 py-4 text-[10px] font-black text-text-muted uppercase tracking-widest">Saldo a Receber</th>
                                 <th className="px-6 py-4 text-[10px] font-black text-text-muted uppercase tracking-widest">Sua Comissão</th>
@@ -355,7 +417,7 @@ export default function Comissoes() {
                             {loading ? (
                                 <tr><td colSpan={7} className="p-20 text-center text-text-muted animate-pulse font-black text-[10px] uppercase">Carregando...</td></tr>
                             ) : weekComissoes.length === 0 ? (
-                                <tr><td colSpan={7} className="p-20 text-center text-text-muted italic">Nenhuma viagem comissionada nesta semana.</td></tr>
+                                <tr><td colSpan={7} className="p-20 text-center text-text-muted italic">Nenhuma rota comissionada nesta semana.</td></tr>
                             ) : (
                                 weekComissoes.map(v => {
                                     const valorAdiantamento = (v.valorFrete * (v.percentualAdiantamento || 0)) / 100;
@@ -365,10 +427,15 @@ export default function Comissoes() {
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col">
                                                     <span className="text-primary font-black text-xs uppercase">{v.codigoViagem}</span>
-                                                    <span className="text-xs font-medium">{v.cliente}</span>
+                                                    <span className="text-xs font-medium uppercase tracking-tighter">{v.cliente}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 text-xs font-semibold">{v.motoristaNome}</td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs font-semibold">{v.motoristaNome}</span>
+                                                    <span className="text-[9px] text-text-muted font-bold uppercase tracking-widest mt-0.5">{v.origem} → {v.destino}</span>
+                                                </div>
+                                            </td>
                                             <td className="px-6 py-4 text-xs font-black text-emerald-500">R$ {v.valorFrete.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col">
@@ -384,13 +451,13 @@ export default function Comissoes() {
                                                         type="number"
                                                         className="w-full bg-background border border-border rounded-lg pl-8 pr-2 py-1.5 text-xs font-bold focus:border-primary outline-none"
                                                         value={v.valorComissao || 0}
-                                                        onChange={(e) => updateCommissionValue(v.id, parseFloat(e.target.value) || 0)}
+                                                        onChange={(e) => updateCommissionValue(v, parseFloat(e.target.value) || 0)}
                                                     />
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 <button 
-                                                    onClick={() => removeCommission(v.id)}
+                                                    onClick={() => removeCommission(v)}
                                                     className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-red-500 p-2 transition-all"
                                                     title="Remover das Comissões"
                                                 >
@@ -437,7 +504,7 @@ export default function Comissoes() {
                                         <img src={PrintLogo} alt="Logo" className="h-16 w-auto object-contain grayscale" />
                                         <div>
                                             <h1 className="text-2xl font-black uppercase tracking-tighter leading-none mb-2">Gestão de Comissões</h1>
-                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Relatório Administrativo de Viagens</p>
+                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Relatório Administrativo de Rotas Comissionadas</p>
                                         </div>
                                     </div>
                                     <div className="text-right">
@@ -450,35 +517,26 @@ export default function Comissoes() {
                                 <table className="w-full text-left border-collapse">
                                     <thead>
                                         <tr className="bg-gray-100 border-y border-black uppercase text-[8px] font-black">
-                                            <th className="py-2 px-3">Carregamento</th>
+                                            <th className="py-2 px-3">Data</th>
                                             <th className="py-2 px-3">Cód</th>
                                             <th className="py-2 px-3">Cliente</th>
-                                            <th className="py-2 px-3">Motorista</th>
-                                            <th className="py-2 px-3">Frete (Base)</th>
-                                            <th className="py-2 px-3">Adiantamento</th>
-                                            <th className="py-2 px-3">Saldo</th>
+                                            <th className="py-2 px-3">Motorista / Rota</th>
+                                            <th className="py-2 px-3 text-right">Frete (Rota)</th>
                                             <th className="py-2 px-3 text-right">Comissão</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-200">
                                         {weekComissoes.map(v => {
-                                            const valorAdiantamento = (v.valorFrete * (v.percentualAdiantamento || 0)) / 100;
-                                            const valorSaldo = v.valorFrete - valorAdiantamento;
                                             return (
                                                 <tr key={v.id} className="text-[9px]">
                                                     <td className="py-3 px-3 font-medium">{v.dataCarregamento ? new Date(v.dataCarregamento + 'T12:00:00').toLocaleDateString('pt-BR') : '---'}</td>
                                                     <td className="py-3 px-3 font-black text-black">{v.codigoViagem}</td>
                                                     <td className="py-3 px-3 uppercase font-bold text-gray-600">{v.cliente}</td>
-                                                    <td className="py-3 px-3 font-bold">{v.motoristaNome}</td>
-                                                    <td className="py-3 px-3">R$ {v.valorFrete.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
                                                     <td className="py-3 px-3">
-                                                        <p className="font-bold leading-none">R$ {valorAdiantamento.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                                                        <div className="flex items-center gap-1 mt-1">
-                                                            <span className="bg-black text-white text-[7px] px-1 font-black rounded">%{v.percentualAdiantamento}</span>
-                                                            <span className="text-[7px] text-gray-400 font-bold uppercase italic">Adiantado</span>
-                                                        </div>
+                                                        <p className="font-bold">{v.motoristaNome}</p>
+                                                        <p className="text-[7px] text-gray-400 uppercase tracking-tighter">{v.origem} → {v.destino}</p>
                                                     </td>
-                                                    <td className="py-3 px-3 font-bold text-black italic">R$ {valorSaldo.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
+                                                    <td className="py-3 px-3 text-right font-bold">R$ {v.valorFrete.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
                                                     <td className="py-3 px-3 text-right font-black text-xs">R$ {(v.valorComissao || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
                                                 </tr>
                                             );
@@ -490,8 +548,8 @@ export default function Comissoes() {
                                 <div className="mt-12 border-t-2 border-black pt-8 grid grid-cols-2 gap-12">
                                     <div className="space-y-4">
                                         <div>
-                                            <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">Total de Cargas no Período</p>
-                                            <p className="text-xl font-black">{weekComissoes.length} Viagens</p>
+                                            <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">Total de Rotas no Período</p>
+                                            <p className="text-xl font-black">{weekComissoes.length} Rotas</p>
                                         </div>
                                         <div className="pt-4 border-t border-gray-100">
                                             <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">Emitido por</p>

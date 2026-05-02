@@ -72,6 +72,11 @@ export default function Despesas() {
     const [loading, setLoading] = useState(true);
     const [searchParams, setSearchParams] = useSearchParams();
 
+    const [isMaintModalOpen, setIsMaintModalOpen] = useState(false);
+    const [maintItem, setMaintItem] = useState<{item: ItemDespesa, index: number} | null>(null);
+    const [maintKM, setMaintKM] = useState('');
+    const [maintNextKM, setMaintNextKM] = useState('');
+
     // Form / Edit state
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -457,6 +462,41 @@ export default function Despesas() {
                 console.error(e);
                 showToast('Erro ao atualizar valor da diária', 'error');
             }
+        }
+    };
+
+    const handleConvertToMaintenance = async () => {
+        if (!maintItem || !maintKM) return;
+
+        setSubmitting(true);
+        try {
+            const v = motoristasProprios.find(m => m.nome === formData.motoristaNome);
+            
+            await addDoc(collection(db, 'manutencoes'), {
+                veiculoId: v?.id || '',
+                placa: formData.placaCavalo,
+                tipo: maintItem.item.categoria === 'Peças' ? 'corretiva' : 'corretiva', // Pode ser ajustado
+                data: maintItem.item.data || formData.dataFim,
+                kmAtual: Number(maintKM),
+                descricao: `[GERADO DE ACERTO] ${maintItem.item.categoria}: ${maintItem.item.descricao}`,
+                oficina: 'Informada no acerto',
+                valorTotal: maintItem.item.valor,
+                status: 'concluida',
+                proximaRevisaoKM: maintNextKM ? Number(maintNextKM) : null,
+                criadoEm: serverTimestamp(),
+                origemAcertoId: editingId
+            });
+
+            showToast('Manutenção registrada com sucesso!', 'success');
+            setIsMaintModalOpen(false);
+            setMaintItem(null);
+            setMaintKM('');
+            setMaintNextKM('');
+        } catch (error) {
+            console.error(error);
+            showToast('Erro ao converter para manutenção', 'error');
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -1006,10 +1046,15 @@ export default function Despesas() {
                                                 <div className="flex items-center gap-3">
                                                     <span className="font-black text-sm text-text-primary">R$ {item.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                                                     <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
-                                                        <button type="button" onClick={() => editItem(idx)} className="text-blue-500 hover:text-blue-400 cursor-pointer">
+                                                        {(item.categoria === 'Peças' || item.categoria === 'Serviços' || item.categoria === 'Borracharia') && (
+                                                            <button type="button" onClick={() => { setMaintItem({item, index: idx}); setIsMaintModalOpen(true); }} className="text-orange-500 hover:text-orange-400 cursor-pointer p-1" title="Vincular à Manutenção">
+                                                                <span className="material-symbols-outlined text-[16px]">build</span>
+                                                            </button>
+                                                        )}
+                                                        <button type="button" onClick={() => editItem(idx)} className="text-blue-500 hover:text-blue-400 cursor-pointer p-1">
                                                             <span className="material-symbols-outlined text-[16px]">edit</span>
                                                         </button>
-                                                        <button type="button" onClick={() => removeItem(idx)} className="text-red-500 hover:text-red-400 cursor-pointer">
+                                                        <button type="button" onClick={() => removeItem(idx)} className="text-red-500 hover:text-red-400 cursor-pointer p-1">
                                                             <span className="material-symbols-outlined text-[16px]">delete</span>
                                                         </button>
                                                     </div>
@@ -1394,6 +1439,73 @@ export default function Despesas() {
                                     className="flex-1 px-4 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest bg-primary text-background-dark shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all"
                                 >
                                     Salvar Alteração
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Conversão para Manutenção */}
+            {isMaintModalOpen && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-background-dark/90 backdrop-blur-md" onClick={() => setIsMaintModalOpen(false)}></div>
+                    <div className="bg-surface border border-orange-500/20 w-full max-w-md rounded-[32px] shadow-2xl relative z-10 p-8 animate-in zoom-in-95">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="size-12 rounded-2xl bg-orange-500/10 text-orange-500 flex items-center justify-center">
+                                <span className="material-symbols-outlined text-2xl">construction</span>
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-black text-text-primary uppercase tracking-tight">Vincular Manutenção</h3>
+                                <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest">Transformar item de acerto em registro técnico</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="bg-background-dark/50 p-4 rounded-2xl border border-border">
+                                <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-1">Item selecionado</p>
+                                <p className="text-sm font-bold text-text-primary">{maintItem?.item.categoria} - R$ {maintItem?.item.valor.toLocaleString('pt-BR')}</p>
+                                <p className="text-[10px] text-text-muted italic mt-1">{maintItem?.item.descricao}</p>
+                            </div>
+
+                            <label className="flex flex-col gap-2">
+                                <span className="text-[10px] font-black text-text-muted uppercase tracking-widest ml-1">KM Atual do Veículo ({formData.placaCavalo})</span>
+                                <input 
+                                    type="number" 
+                                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-orange-500 outline-none"
+                                    placeholder="Ex: 125400"
+                                    value={maintKM}
+                                    onChange={(e) => setMaintKM(e.target.value)}
+                                />
+                            </label>
+
+                            <label className="flex flex-col gap-2">
+                                <span className="text-[10px] font-black text-text-muted uppercase tracking-widest ml-1">KM Próxima Revisão (Opcional)</span>
+                                <input 
+                                    type="number" 
+                                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-emerald-500 outline-none"
+                                    placeholder="Ex: 145000"
+                                    value={maintNextKM}
+                                    onChange={(e) => setMaintNextKM(e.target.value)}
+                                />
+                                <p className="text-[9px] text-text-muted px-1">Se for troca de óleo ou preventiva, o sistema avisará ao atingir este KM.</p>
+                            </label>
+
+                            <div className="flex gap-3 pt-4">
+                                <button 
+                                    type="button" 
+                                    onClick={() => setIsMaintModalOpen(false)}
+                                    className="flex-1 h-12 bg-background border border-border rounded-xl text-[10px] font-black uppercase tracking-widest text-text-muted"
+                                >
+                                    Cancelar
+                                </button>
+                                <button 
+                                    type="button"
+                                    onClick={handleConvertToMaintenance}
+                                    disabled={!maintKM || submitting}
+                                    className="flex-[2] h-12 bg-orange-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-orange-500/20 disabled:opacity-50"
+                                >
+                                    {submitting ? 'Gravando...' : 'Confirmar e Salvar'}
                                 </button>
                             </div>
                         </div>
