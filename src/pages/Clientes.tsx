@@ -12,6 +12,7 @@ interface Cliente {
     observacao: string;
     percentualAdiantamentoPadrao?: number;
     formaPagamento?: string;
+    valorDiaria?: number;
     dataRegistro?: any;
 }
 
@@ -29,7 +30,8 @@ export default function Clientes() {
         cidade: '',
         observacao: '',
         percentualAdiantamentoPadrao: 0,
-        formaPagamento: ''
+        formaPagamento: '',
+        valorDiaria: 0
     });
     const [submitting, setSubmitting] = useState(false);
     const [search, setSearch] = useState('');
@@ -49,7 +51,7 @@ export default function Clientes() {
 
     const openCreateModal = () => {
         setEditingId(null);
-        setFormData({ nome: '', contato: '', operador: '', cnpjCpf: '', cidade: '', observacao: '', percentualAdiantamentoPadrao: 0, formaPagamento: '' });
+        setFormData({ nome: '', contato: '', operador: '', cnpjCpf: '', cidade: '', observacao: '', percentualAdiantamentoPadrao: 0, formaPagamento: '', valorDiaria: 0 });
         setIsFormOpen(true);
     };
 
@@ -63,7 +65,8 @@ export default function Clientes() {
             cidade: c.cidade || '',
             observacao: c.observacao || '',
             percentualAdiantamentoPadrao: c.percentualAdiantamentoPadrao || 0,
-            formaPagamento: c.formaPagamento || ''
+            formaPagamento: c.formaPagamento || '',
+            valorDiaria: c.valorDiaria || 0
         });
         setIsFormOpen(true);
     };
@@ -234,6 +237,13 @@ export default function Clientes() {
                                 <label className="flex flex-col gap-2">
                                     <span className="text-[10px] font-black text-text-muted uppercase tracking-widest ml-1">Forma de Pagamento Padrão</span>
                                     <input type="text" className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm" placeholder="Ex: Pix, Pamcard..." value={formData.formaPagamento} onChange={(e) => setFormData({...formData, formaPagamento: e.target.value})} />
+                                </label>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-4">
+                                <label className="flex flex-col gap-2">
+                                    <span className="text-[10px] font-black text-text-muted uppercase tracking-widest ml-1">Valor da Diária (R$)</span>
+                                    <input type="number" step="0.01" className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm" placeholder="Ex: 500.00" value={formData.valorDiaria || ''} onChange={(e) => setFormData({...formData, valorDiaria: parseFloat(e.target.value) || 0})} />
                                 </label>
                             </div>
 

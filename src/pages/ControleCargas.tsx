@@ -18,19 +18,22 @@ interface Rota {
     codigoRastreio: string;
     entregueDocumento: boolean;
     dataEntregaDocumento: string;
-    status: 'Indo para o cliente' | 'Carregando' | 'Viagem' | 'Descarregando' | 'Finalizado' | 'Problema';
+    status: 'Indo para o cliente' | 'Carregando' | 'Viagem' | 'Descarregando' | 'Finalizado' | 'Problema' | 'Em conferência';
     comissionada?: boolean;
     dataEnvioCorreios?: string;
     previsaoChegadaCorreios?: string;
     previsaoChegadaRota?: string;
     dataSaidaRota?: string;
-    dataDescarregamentoRota?: string;
+    previsaoDescarregamentoRota?: string;
+    dataChegadaEfetivaRota?: string;
+    dataDescarregamentoEfetivoRota?: string;
     entregue?: boolean;
     litrosAbastecidos?: number;
     valorLitroCombustivel?: number;
     formaPagamento?: string;
     valorComissao?: number;
     anexosEntregas?: string[];
+    diariasPagas?: boolean;
 }
 
 interface Viagem {
@@ -88,7 +91,8 @@ const ESTADOS_BR = [
 
 const STATUS_OPTIONS = [
     'Em planejamento', 
-    'Em curso', 
+    'Em curso',
+    'Em conferência',
     'Finalizado', 
     'Problema'
 ];
@@ -98,6 +102,7 @@ const ROTA_STATUS_OPTIONS = [
     'Carregando',
     'Viagem',
     'Descarregando',
+    'Em conferência',
     'Finalizado',
     'Problema'
 ];
@@ -110,6 +115,8 @@ const getRotaStatusColor = (status: string) => {
         case 'Viagem':
         case 'Descarregando':
             return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
+        case 'Em conferência':
+            return 'bg-purple-500/10 text-purple-500 border-purple-500/20';
         case 'Finalizado':
             return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
         case 'Problema':
@@ -125,6 +132,7 @@ const getRotaCardColor = (status: string) => {
         case 'Carregando':
         case 'Viagem':
         case 'Descarregando': return 'bg-amber-500/10 border-amber-500/50 shadow-amber-500/10';
+        case 'Em conferência': return 'bg-purple-500/10 border-purple-500/50 shadow-purple-500/10';
         case 'Indo para o cliente': return 'bg-blue-500/10 border-blue-500/50 shadow-blue-500/10';
         case 'Problema': return 'bg-red-500/20 border-red-500/70 shadow-red-500/20 animate-pulse-subtle';
         default: return 'bg-background border-border';
@@ -132,24 +140,25 @@ const getRotaCardColor = (status: string) => {
 };
 
 const getStatusColor = (status: string, rotas: any[] = []) => {
-    if (rotas && Array.isArray(rotas) && rotas.some(r => r.status === 'Problema')) {
-        return 'bg-red-500/10 text-red-500 border-red-500/20';
-    }
-    
-    const normalized = normalizeStatus(status);
-    
-    if (normalized === 'Finalizado' || (rotas && Array.isArray(rotas) && rotas.length > 0 && rotas.every(r => r.status === 'Finalizado'))) {
-        return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
-    }
+        if (rotas && Array.isArray(rotas) && rotas.some(r => r.status === 'Problema')) {
+            return 'bg-red-500/10 text-red-500 border-red-500/20';
+        }
+        
+        const normalized = normalizeStatus(status);
+        
+        if (normalized === 'Finalizado' || (rotas && Array.isArray(rotas) && rotas.length > 0 && rotas.every(r => r.status === 'Finalizado'))) {
+            return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
+        }
 
-    switch (normalized) {
-        case 'Em planejamento': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
-        case 'Em curso': return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
-        case 'Finalizado': return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
-        case 'Problema': return 'bg-red-500/10 text-red-500 border-red-500/20';
-        default: return 'bg-slate-500/10 text-slate-500 border-slate-500/20';
-    }
-};
+        switch (normalized) {
+            case 'Em planejamento': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
+            case 'Em curso': return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
+            case 'Em conferência': return 'bg-purple-500/10 text-purple-500 border-purple-500/20';
+            case 'Finalizado': return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
+            case 'Problema': return 'bg-red-500/10 text-red-500 border-red-500/20';
+            default: return 'bg-slate-500/10 text-slate-500 border-slate-500/20';
+        }
+    };
 
 function normalizeStatus(status: string): string {
     if (!status) return 'Em planejamento';
@@ -169,7 +178,7 @@ export default function ControleCargas() {
     const [viagens, setViagens] = useState<Viagem[]>([]);
     const [motoristas, setMotoristas] = useState<{nome: string, status: string, cavaloPlaca?: string, bauPlaca?: string}[]>([]);
     const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
-    const [clientes, setClientes] = useState<{nome: string, percentualAdiantamentoPadrao?: number, formaPagamento?: string}[]>([]);
+    const [clientes, setClientes] = useState<{nome: string, percentualAdiantamentoPadrao?: number, formaPagamento?: string, valorDiaria?: number}[]>([]);
     const [despesasGlobais, setDespesasGlobais] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchParams, setSearchParams] = useSearchParams();
@@ -283,7 +292,8 @@ export default function ControleCargas() {
             const list = snapshot.docs.map(doc => ({
                 nome: doc.data().nome,
                 percentualAdiantamentoPadrao: doc.data().percentualAdiantamentoPadrao,
-                formaPagamento: doc.data().formaPagamento
+                formaPagamento: doc.data().formaPagamento,
+                valorDiaria: doc.data().valorDiaria
             }));
             setClientes(list);
         });
@@ -349,7 +359,11 @@ export default function ControleCargas() {
                 origem: '', destino: '', cliente: '', peso: 0, valorFrete: 0,
                 percentualAdiantamento: 30, adiantamentoPago: false, saldoPago: false,
                 codigoRastreio: '', entregueDocumento: false, dataEntregaDocumento: '',
-                status: 'Indo para o cliente'
+                status: 'Indo para o cliente',
+                previsaoDescarregamentoRota: '',
+                dataChegadaEfetivaRota: '',
+                dataDescarregamentoEfetivoRota: '',
+                diariasPagas: false
             }],
             status: 'Em planejamento',
             linkComprovante: '',
@@ -379,7 +393,11 @@ export default function ControleCargas() {
                 codigoRastreio: (v as any).codigoRastreio || '',
                 entregueDocumento: (v as any).entregueDocumento || false,
                 dataEntregaDocumento: (v as any).dataEntregaDocumento || '',
-                status: 'Indo para o cliente'
+                status: 'Indo para o cliente',
+                previsaoDescarregamentoRota: '',
+                dataChegadaEfetivaRota: '',
+                dataDescarregamentoEfetivoRota: '',
+                diariasPagas: false
             }];
         }
 
@@ -450,6 +468,21 @@ export default function ControleCargas() {
             alert('Erro ao salvar viagem');
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    const enviarParaConferencia = async () => {
+        if (!editingId) return;
+        try {
+            await updateDoc(doc(db, 'cargas', editingId), {
+                status: 'Em conferência',
+                dataAtualizacao: serverTimestamp()
+            });
+            alert('Ciclo enviado para conferência!');
+            setIsFormOpen(false);
+        } catch (error) {
+            console.error(error);
+            alert('Erro ao enviar para conferência.');
         }
     };
 
@@ -570,6 +603,11 @@ export default function ControleCargas() {
         const newRotas = [...formData.rotas];
         newRotas[index] = { ...newRotas[index], [field]: value };
         
+        // Auto-fill previsaoDescarregamentoRota when previsaoChegadaRota is set
+        if (field === 'previsaoChegadaRota' && value) {
+            newRotas[index].previsaoDescarregamentoRota = value;
+        }
+        
         // Auto-fill percentualAdiantamento and formaPagamento when client is selected
         if (field === 'cliente') {
             const selectedClient = clientes.find(c => c.nome === value);
@@ -602,7 +640,11 @@ export default function ControleCargas() {
                     percentualAdiantamento: 30, adiantamentoPago: false, saldoPago: false,
                     codigoRastreio: '', entregueDocumento: false, dataEntregaDocumento: '',
                     status: 'Indo para o cliente',
-                    valorComissao: 500
+                    valorComissao: 500,
+                    previsaoDescarregamentoRota: '',
+                    dataChegadaEfetivaRota: '',
+                    dataDescarregamentoEfetivoRota: '',
+                    diariasPagas: false
                 }
             ]
         });
@@ -1003,8 +1045,16 @@ export default function ControleCargas() {
                                                 <input type="date" className={`w-full bg-surface border ${isAtrasado ? 'border-red-500 text-red-500' : 'border-border'} rounded-xl px-4 py-2.5 text-sm`} value={rota.previsaoChegadaRota || ''} onChange={(e) => updateRota(index, 'previsaoChegadaRota', e.target.value)} disabled={formData.status === 'Finalizado'} />
                                             </label>
                                             <label className="flex flex-col gap-2">
-                                                <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest ml-1">Data Descarregamento</span>
-                                                <input type="date" className="w-full bg-surface border border-border rounded-xl px-4 py-2.5 text-sm" value={rota.dataDescarregamentoRota || ''} onChange={(e) => updateRota(index, 'dataDescarregamentoRota', e.target.value)} disabled={formData.status === 'Finalizado'} />
+                                                <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest ml-1">Prev. Descarregamento</span>
+                                                <input type="date" className="w-full bg-surface border border-border rounded-xl px-4 py-2.5 text-sm" value={rota.previsaoDescarregamentoRota || ''} onChange={(e) => updateRota(index, 'previsaoDescarregamentoRota', e.target.value)} disabled={formData.status === 'Finalizado'} />
+                                            </label>
+                                            <label className="flex flex-col gap-2">
+                                                <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest ml-1">Chegada Efetiva</span>
+                                                <input type="date" className="w-full bg-surface border border-border rounded-xl px-4 py-2.5 text-sm" value={rota.dataChegadaEfetivaRota || ''} onChange={(e) => updateRota(index, 'dataChegadaEfetivaRota', e.target.value)} disabled={formData.status === 'Finalizado'} />
+                                            </label>
+                                            <label className="flex flex-col gap-2">
+                                                <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest ml-1">Descarregamento Efetivo</span>
+                                                <input type="date" className="w-full bg-surface border border-border rounded-xl px-4 py-2.5 text-sm" value={rota.dataDescarregamentoEfetivoRota || ''} onChange={(e) => updateRota(index, 'dataDescarregamentoEfetivoRota', e.target.value)} disabled={formData.status === 'Finalizado'} />
                                             </label>
                                         </div>
 
@@ -1097,13 +1147,112 @@ export default function ControleCargas() {
                                                 <span className="text-[9px] font-black text-primary/80 uppercase">Preço por Litro</span>
                                                 <input type="number" step="0.001" className="w-full bg-surface border border-border rounded-lg px-2 py-1.5 text-xs" value={rota.valorLitroCombustivel || ''} onChange={(e) => updateRota(index, 'valorLitroCombustivel', parseFloat(e.target.value) || 0)} disabled={formData.status === 'Finalizado'} />
                                             </label>
-                                            <label className="flex flex-col gap-1">
+<label className="flex flex-col gap-1">
                                                 <span className="text-[9px] font-black text-primary/80 uppercase">Custo Total Combustível</span>
                                                 <span className="w-full bg-surface border border-primary/20 text-primary font-black rounded-lg px-2 py-1.5 text-xs">
                                                     R$ {((rota.litrosAbastecidos || 0) * (rota.valorLitroCombustivel || 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}
                                                 </span>
                                             </label>
-                                        </div>
+                                            </div>
+
+{/* Cálculo de Diárias */}
+                                             <div className="border border-amber-500/30 bg-amber-500/5 p-4 rounded-xl mt-4">
+                                                 <div className="flex items-center gap-2 mb-3">
+                                                     <span className="material-symbols-outlined text-[16px] text-amber-500">calendar_today</span>
+                                                     <span className="text-[10px] font-black uppercase text-amber-500 tracking-widest">Cálculo de Diárias</span>
+                                                 </div>
+                                                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                                                     <div className="flex flex-col gap-1">
+                                                         <span className="text-[9px] font-black uppercase text-primary/80">Data Chegada Efetiva</span>
+                                                         <span className="text-sm font-bold">{rota.dataChegadaEfetivaRota ? new Date(rota.dataChegadaEfetivaRota + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</span>
+                                                     </div>
+                                                     <div className="flex flex-col gap-1">
+                                                         <span className="text-[9px] font-black uppercase text-primary/80">Data Descarregamento Efetivo</span>
+                                                         <span className="text-sm font-bold">{rota.dataDescarregamentoEfetivoRota ? new Date(rota.dataDescarregamentoEfetivoRota + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</span>
+                                                     </div>
+                                                     {(() => {
+                                                         const valorDiaria = clientes.find(c => c.nome === rota.cliente)?.valorDiaria || 0;
+                                                         if (rota.dataChegadaEfetivaRota && rota.dataDescarregamentoEfetivoRota) {
+                                                             const d1 = new Date(rota.dataChegadaEfetivaRota);
+                                                             const d2 = new Date(rota.dataDescarregamentoEfetivoRota);
+                                                             const diffDays = Math.floor((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
+                                                             const numDiarias = diffDays > 0 ? diffDays + 1 : 1;
+                                                             return (
+                                                                 <>
+                                                                     <div className="flex flex-col gap-1">
+                                                                         <span className="text-[9px] font-black uppercase text-primary/80">Número de Diárias</span>
+                                                                         <span className="text-sm font-bold text-amber-500">{numDiarias}</span>
+                                                                     </div>
+                                                                     <div className="flex flex-col gap-1">
+                                                                         <span className="text-[9px] font-black uppercase text-primary/80">Valor Diária (R$)</span>
+                                                                         <span className="text-sm font-bold text-amber-500">{valorDiaria.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                                                     </div>
+                                                                     <div className="flex flex-col gap-1">
+                                                                         <span className="text-[9px] font-black uppercase text-primary/80">Total Diárias (R$)</span>
+                                                                         <span className="text-lg font-black text-amber-500">R$ {(valorDiaria * numDiarias).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                                                     </div>
+                                                                     <div className="flex items-center gap-2">
+                                                                         <input type="checkbox" className="rounded border-border text-amber-500 focus:ring-amber-500 size-4" checked={rota.diariasPagas || false} onChange={(e) => updateRota(index, 'diariasPagas', e.target.checked)} disabled={formData.status === 'Finalizado'} />
+                                                                         <span className="text-[10px] font-black uppercase text-amber-500">Diárias Pagas</span>
+                                                                     </div>
+                                                                 </>
+                                                             );
+                                                         }
+                                                         return (
+                                                             <div className="flex flex-col gap-1 col-span-3">
+                                                                 <span className="text-[9px] font-black uppercase text-primary/80">Valor Diária do Cliente (R$)</span>
+                                                                 <span className="text-sm font-bold text-amber-500">{valorDiaria || 0} {valorDiaria ? '' : '(não definido)'}</span>
+                                                             </div>
+                                                         );
+                                                     })()}
+                                                 </div>
+                                             </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <span className="text-[9px] font-black uppercase text-primary/80">Data Chegada Efetiva</span>
+                                                    <span className="text-sm font-bold">{rota.dataChegadaEfetivaRota ? new Date(rota.dataChegadaEfetivaRota + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</span>
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <span className="text-[9px] font-black uppercase text-primary/80">Data Descarregamento Efetivo</span>
+                                                    <span className="text-sm font-bold">{rota.dataDescarregamentoEfetivoRota ? new Date(rota.dataDescarregamentoEfetivoRota + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</span>
+                                                </div>
+                                                {(() => {
+                                                    const valorDiaria = clientes.find(c => c.nome === rota.cliente)?.valorDiaria || 0;
+                                                    if (rota.dataChegadaEfetivaRota && rota.dataDescarregamentoEfetivoRota) {
+                                                        const d1 = new Date(rota.dataChegadaEfetivaRota);
+                                                        const d2 = new Date(rota.dataDescarregamentoEfetivoRota);
+                                                        const diffDays = Math.floor((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
+                                                        const numDiarias = diffDays > 0 ? diffDays + 1 : 1;
+                                                        return (
+                                                            <>
+                                                                <div className="flex flex-col gap-1">
+                                                                    <span className="text-[9px] font-black uppercase text-primary/80">Número de Diárias</span>
+                                                                    <span className="text-sm font-bold text-amber-500">{numDiarias}</span>
+                                                                </div>
+                                                                <div className="flex flex-col gap-1">
+                                                                    <span className="text-[9px] font-black uppercase text-primary/80">Valor Diária (R$)</span>
+                                                                    <span className="text-sm font-bold text-amber-500">{valorDiaria.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                                                </div>
+                                                                <div className="flex flex-col gap-1">
+                                                                    <span className="text-[9px] font-black uppercase text-primary/80">Total Diárias (R$)</span>
+                                                                    <span className="text-lg font-black text-amber-500">R$ {(valorDiaria * numDiarias).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <input type="checkbox" className="rounded border-border text-amber-500 focus:ring-amber-500 size-4" checked={rota.diariasPagas || false} onChange={(e) => updateRota(index, 'diariasPagas', e.target.checked)} disabled={formData.status === 'Finalizado'} />
+                                                                    <span className="text-[10px] font-black uppercase text-amber-500">Diárias Pagas</span>
+                                                                </div>
+                                                            </>
+                                                        );
+                                                    }
+                                                    return (
+                                                        <>
+                                                            <div className="flex flex-col gap-1 lg:col-span-4">
+                                                                <span className="text-[9px] font-black uppercase text-primary/80">Valor Diária do Cliente (R$)</span>
+                                                                <span className="text-sm font-bold text-amber-500">{valorDiaria || 0} {valorDiaria ? '' : '(não definido)'}</span>
+                                                            </div>
+                                                        </>
+                                                    );
+                                                })()}
+                                            </div>
 
                                         {rota.anexosEntregas && rota.anexosEntregas.length > 0 && (
                                             <div className="grid grid-cols-1 gap-2 border border-primary/20 bg-primary/5 p-4 rounded-xl mt-4">
@@ -1180,6 +1329,11 @@ export default function ControleCargas() {
                                 ))}
                             </div>
                             <div className="flex justify-end gap-3 border-t border-border/50 pt-4">
+                                {editingId && formData.status !== 'Em conferência' && (
+                                    <button type="button" onClick={enviarParaConferencia} disabled={submitting} className="px-6 py-4 bg-purple-500 text-white font-black rounded-xl text-[10px] uppercase tracking-widest shadow-lg hover:bg-purple-600 transition-colors">
+                                        {submitting ? 'Enviando...' : 'Enviar para Conferência'}
+                                    </button>
+                                )}
                                 <button type="button" onClick={() => setIsFormOpen(false)} className="px-6 py-4 border border-border text-primary/80 font-black rounded-xl text-[10px] uppercase tracking-widest hover:bg-surface-dark transition-colors">
                                     Cancelar
                                 </button>
