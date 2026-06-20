@@ -1207,52 +1207,6 @@ export default function ControleCargas() {
                                                      })()}
                                                  </div>
                                              </div>
-                                                <div className="flex flex-col gap-1">
-                                                    <span className="text-[9px] font-black uppercase text-primary/80">Data Chegada Efetiva</span>
-                                                    <span className="text-sm font-bold">{rota.dataChegadaEfetivaRota ? new Date(rota.dataChegadaEfetivaRota + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</span>
-                                                </div>
-                                                <div className="flex flex-col gap-1">
-                                                    <span className="text-[9px] font-black uppercase text-primary/80">Data Descarregamento Efetivo</span>
-                                                    <span className="text-sm font-bold">{rota.dataDescarregamentoEfetivoRota ? new Date(rota.dataDescarregamentoEfetivoRota + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</span>
-                                                </div>
-                                                {(() => {
-                                                    const valorDiaria = clientes.find(c => c.nome === rota.cliente)?.valorDiaria || 0;
-                                                    if (rota.dataChegadaEfetivaRota && rota.dataDescarregamentoEfetivoRota) {
-                                                        const d1 = new Date(rota.dataChegadaEfetivaRota);
-                                                        const d2 = new Date(rota.dataDescarregamentoEfetivoRota);
-                                                        const diffDays = Math.floor((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
-                                                        const numDiarias = diffDays > 0 ? diffDays + 1 : 1;
-                                                        return (
-                                                            <>
-                                                                <div className="flex flex-col gap-1">
-                                                                    <span className="text-[9px] font-black uppercase text-primary/80">Número de Diárias</span>
-                                                                    <span className="text-sm font-bold text-amber-500">{numDiarias}</span>
-                                                                </div>
-                                                                <div className="flex flex-col gap-1">
-                                                                    <span className="text-[9px] font-black uppercase text-primary/80">Valor Diária (R$)</span>
-                                                                    <span className="text-sm font-bold text-amber-500">{valorDiaria.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
-                                                                </div>
-                                                                <div className="flex flex-col gap-1">
-                                                                    <span className="text-[9px] font-black uppercase text-primary/80">Total Diárias (R$)</span>
-                                                                    <span className="text-lg font-black text-amber-500">R$ {(valorDiaria * numDiarias).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
-                                                                </div>
-                                                                <div className="flex items-center gap-2">
-                                                                    <input type="checkbox" className="rounded border-border text-amber-500 focus:ring-amber-500 size-4" checked={rota.diariasPagas || false} onChange={(e) => updateRota(index, 'diariasPagas', e.target.checked)} disabled={formData.status === 'Finalizado'} />
-                                                                    <span className="text-[10px] font-black uppercase text-amber-500">Diárias Pagas</span>
-                                                                </div>
-                                                            </>
-                                                        );
-                                                    }
-                                                    return (
-                                                        <>
-                                                            <div className="flex flex-col gap-1 lg:col-span-4">
-                                                                <span className="text-[9px] font-black uppercase text-primary/80">Valor Diária do Cliente (R$)</span>
-                                                                <span className="text-sm font-bold text-amber-500">{valorDiaria || 0} {valorDiaria ? '' : '(não definido)'}</span>
-                                                            </div>
-                                                        </>
-                                                    );
-                                                })()}
-                                            </div>
 
                                         {rota.anexosEntregas && rota.anexosEntregas.length > 0 && (
                                             <div className="grid grid-cols-1 gap-2 border border-primary/20 bg-primary/5 p-4 rounded-xl mt-4">
