@@ -23,7 +23,7 @@ import Manutencao from './pages/Manutencao';
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <BrowserRouter basename="/Aplicativo-de-Gestao-de-Frota">
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/prestacao-contas" element={<PrestacaoContas />} />
