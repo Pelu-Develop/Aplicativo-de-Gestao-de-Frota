@@ -5,6 +5,15 @@ import { db } from '../lib/firebase';
 import { useReactToPrint } from 'react-to-print';
 import { BadgeDollarSign } from 'lucide-react';
 
+interface Deposito {
+    id: string;
+    tipo: 'adiantamento_inicial' | 'durante_viagem' | 'final';
+    valor: number;
+    data: string;
+    destinatario: string;
+    observacao: string;
+}
+
 interface Rota {
     id: string;
     origem: string;
@@ -37,6 +46,7 @@ interface Rota {
     temDescarga?: boolean;
     valorDescargaPrevisto?: number;
     valorDescargaEfetivo?: number;
+    depositos?: Deposito[];
 }
 
 interface Viagem {
@@ -1087,39 +1097,10 @@ export default function ControleCargas() {
                                                 <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest ml-1">Frete R$</span>
                                                 <input type="number" step="0.01" className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm font-bold text-emerald-500" value={rota.valorFrete || ''} onChange={(e) => updateRota(index, 'valorFrete', parseFloat(e.target.value) || 0)} disabled={formData.status === 'Finalizado'} />
                                             </label>
-                                            <label className="flex flex-col gap-2">
-                                                <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest ml-1">% Adiant.</span>
-                                                <input type="number" step="0.01" className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm font-bold text-blue-500" value={rota.percentualAdiantamento || ''} onChange={(e) => updateRota(index, 'percentualAdiantamento', parseFloat(e.target.value) || 0)} disabled={formData.status === 'Finalizado'} />
-                                            </label>
                                             <label className="flex flex-col gap-2 lg:col-span-2">
                                                 <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest ml-1">Forma de Pagamento</span>
                                                 <input type="text" placeholder="Ex: Pix, Pamcard..." className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm" value={rota.formaPagamento || ''} onChange={(e) => updateRota(index, 'formaPagamento', e.target.value)} disabled={formData.status === 'Finalizado'} />
                                             </label>
-                                            <div className="flex flex-col gap-1 lg:col-span-2 pt-2 justify-center">
-                                                <div className="flex gap-4">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-[9px] font-black uppercase text-primary/80">Adiantamento R$</span>
-                                                        <span className={`text-sm font-bold ${rota.adiantamentoPago ? 'text-blue-500' : 'text-blue-500/70'}`}>R$ {((rota.valorFrete || 0) * (rota.percentualAdiantamento || 0) / 100).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
-                                                        {!rota.adiantamentoPago && <span className="text-[8px] bg-red-500/10 text-red-500 px-1 py-0.5 rounded font-black mt-1 w-fit uppercase">Falta Receber</span>}
-                                                    </div>
-                                                    <div className="flex flex-col">
-                                                        <span className="text-[9px] font-black uppercase text-primary/80">Saldo R$</span>
-                                                        <span className={`text-sm font-bold ${rota.saldoPago ? 'text-emerald-500' : 'text-emerald-500/70'}`}>R$ {((rota.valorFrete || 0) - ((rota.valorFrete || 0) * (rota.percentualAdiantamento || 0) / 100)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
-                                                        {!rota.saldoPago && <span className="text-[8px] bg-red-500/10 text-red-500 px-1 py-0.5 rounded font-black mt-1 w-fit uppercase">Falta Receber</span>}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex flex-col justify-center gap-2">
-                                                <label className="flex items-center gap-2 cursor-pointer group">
-                                                    <input type="checkbox" className="rounded border-border text-primary focus:ring-primary size-4" checked={rota.adiantamentoPago} onChange={(e) => updateRota(index, 'adiantamentoPago', e.target.checked)} disabled={formData.status === 'Finalizado'} />
-                                                    <span className="text-[10px] font-black uppercase text-text-primary group-hover:text-primary transition-colors">Adiant. Pago</span>
-                                                </label>
-                                                <label className="flex items-center gap-2 cursor-pointer group">
-                                                    <input type="checkbox" className="rounded border-border text-emerald-500 focus:ring-emerald-500 size-4" checked={rota.saldoPago} onChange={(e) => updateRota(index, 'saldoPago', e.target.checked)} disabled={formData.status === 'Finalizado'} />
-                                                    <span className="text-[10px] font-black uppercase text-text-primary group-hover:text-emerald-500 transition-colors">Saldo Pago</span>
-                                                </label>
-                                            </div>
                                             <div className="flex flex-col justify-center gap-2">
                                                 <label className="flex items-center gap-2 cursor-pointer group">
                                                     <input type="checkbox" className="rounded border-border text-purple-500 focus:ring-purple-500 size-4" checked={rota.comissionada || false} onChange={(e) => updateRota(index, 'comissionada', e.target.checked)} disabled={formData.status === 'Finalizado'} />
@@ -1131,7 +1112,7 @@ export default function ControleCargas() {
                                                 </label>
                                             </div>
 
-                                            <div className="flex flex-col gap-2 justify-center lg:col-span-2">
+                                            <div className="flex flex-col gap-2 justify-center lg:col-span-4">
                                                  <label className="flex flex-col gap-1">
                                                     <span className="text-[9px] font-black text-primary/80 uppercase">Status da Rota</span>
                                                     <select className={`w-full bg-surface border ${getRotaStatusColor(rota.status)} rounded-lg px-2 py-1.5 text-xs font-bold focus:outline-none`} value={rota.status} onChange={(e) => updateRota(index, 'status', e.target.value as any)}>
@@ -1140,6 +1121,122 @@ export default function ControleCargas() {
                                                 </label>
                                             </div>
                                         </div>
+
+                                        {/* === SISTEMA DE DEPÓSITOS / ADIANTAMENTOS === */}
+                                        {(() => {
+                                            const depositos: Deposito[] = rota.depositos || [];
+                                            const totalDepositado = depositos.reduce((s, d) => s + (d.valor || 0), 0);
+                                            const saldoRestante = (rota.valorFrete || 0) - totalDepositado;
+
+                                            const addDeposito = (tipo: Deposito['tipo']) => {
+                                                const newDep: Deposito = {
+                                                    id: Math.random().toString(36).substr(2, 9),
+                                                    tipo,
+                                                    valor: 0,
+                                                    data: new Date().toISOString().split('T')[0],
+                                                    destinatario: formData.motoristaNome || 'Motorista',
+                                                    observacao: ''
+                                                };
+                                                updateRota(index, 'depositos', [...depositos, newDep]);
+                                            };
+
+                                            const updateDeposito = (depId: string, field: keyof Deposito, value: any) => {
+                                                const updated = depositos.map(d => d.id === depId ? { ...d, [field]: value } : d);
+                                                updateRota(index, 'depositos', updated);
+                                            };
+
+                                            const removeDeposito = (depId: string) => {
+                                                updateRota(index, 'depositos', depositos.filter(d => d.id !== depId));
+                                            };
+
+                                            const tipoLabel = (tipo: Deposito['tipo']) => {
+                                                if (tipo === 'adiantamento_inicial') return { label: 'Adiantamento Inicial', color: 'blue', icon: 'paid' };
+                                                if (tipo === 'durante_viagem') return { label: 'Depósito em Viagem', color: 'amber', icon: 'currency_exchange' };
+                                                return { label: 'Depósito Final', color: 'emerald', icon: 'account_balance' };
+                                            };
+
+                                            return (
+                                                <div className="border border-primary/20 bg-background rounded-xl p-4 mb-4">
+                                                    <div className="flex items-center justify-between mb-3 pb-2 border-b border-border">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="material-symbols-outlined text-[16px] text-primary">payments</span>
+                                                            <span className="text-[10px] font-black uppercase text-primary tracking-widest">Adiantamentos & Depósitos</span>
+                                                        </div>
+                                                        <div className="flex gap-1.5">
+                                                            <button type="button" onClick={() => addDeposito('adiantamento_inicial')} disabled={formData.status === 'Finalizado'} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-500/10 text-blue-500 text-[10px] font-black uppercase hover:bg-blue-500/20 transition-colors disabled:opacity-40">
+                                                                <span className="material-symbols-outlined text-[13px]">add</span>Adiant. Inicial
+                                                            </button>
+                                                            <button type="button" onClick={() => addDeposito('durante_viagem')} disabled={formData.status === 'Finalizado'} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/10 text-amber-500 text-[10px] font-black uppercase hover:bg-amber-500/20 transition-colors disabled:opacity-40">
+                                                                <span className="material-symbols-outlined text-[13px]">add</span>Em Viagem
+                                                            </button>
+                                                            <button type="button" onClick={() => addDeposito('final')} disabled={formData.status === 'Finalizado'} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-500 text-[10px] font-black uppercase hover:bg-emerald-500/20 transition-colors disabled:opacity-40">
+                                                                <span className="material-symbols-outlined text-[13px]">add</span>Final
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {depositos.length === 0 ? (
+                                                        <p className="text-[10px] text-primary/40 text-center py-3 italic">Nenhum depósito registrado. Use os botões acima para adicionar.</p>
+                                                    ) : (
+                                                        <div className="flex flex-col gap-3">
+                                                            {depositos.map((dep) => {
+                                                                const { label, color, icon } = tipoLabel(dep.tipo);
+                                                                return (
+                                                                    <div key={dep.id} className={`border border-${color}-500/30 bg-${color}-500/5 rounded-xl p-3`}>
+                                                                        <div className="flex items-center justify-between mb-2">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className={`material-symbols-outlined text-[14px] text-${color}-500`}>{icon}</span>
+                                                                                <span className={`text-[10px] font-black uppercase text-${color}-500`}>{label}</span>
+                                                                            </div>
+                                                                            {formData.status !== 'Finalizado' && (
+                                                                                <button type="button" onClick={() => removeDeposito(dep.id)} className="text-red-400 hover:text-red-500 transition-colors">
+                                                                                    <span className="material-symbols-outlined text-[16px]">delete</span>
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                                            <label className="flex flex-col gap-1">
+                                                                                <span className="text-[9px] font-black uppercase text-primary/80">Valor R$</span>
+                                                                                <input type="number" step="0.01" className={`w-full bg-background border border-border rounded-lg px-2 py-1.5 text-xs font-bold text-${color}-500`} value={dep.valor || ''} onChange={e => updateDeposito(dep.id, 'valor', parseFloat(e.target.value) || 0)} disabled={formData.status === 'Finalizado'} />
+                                                                            </label>
+                                                                            <label className="flex flex-col gap-1">
+                                                                                <span className="text-[9px] font-black uppercase text-primary/80">Data</span>
+                                                                                <input type="date" className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-xs" value={dep.data} onChange={e => updateDeposito(dep.id, 'data', e.target.value)} disabled={formData.status === 'Finalizado'} />
+                                                                            </label>
+                                                                            <label className="flex flex-col gap-1">
+                                                                                <span className="text-[9px] font-black uppercase text-primary/80">Destinatário</span>
+                                                                                <input type="text" className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-xs" value={dep.destinatario} onChange={e => updateDeposito(dep.id, 'destinatario', e.target.value)} disabled={formData.status === 'Finalizado'} />
+                                                                            </label>
+                                                                            <label className="flex flex-col gap-1">
+                                                                                <span className="text-[9px] font-black uppercase text-primary/80">Observação</span>
+                                                                                <input type="text" placeholder="Ex: Pamcard, viagem..." className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-xs" value={dep.observacao} onChange={e => updateDeposito(dep.id, 'observacao', e.target.value)} disabled={formData.status === 'Finalizado'} />
+                                                                            </label>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Resumo financeiro dos depósitos */}
+                                                    <div className="mt-3 pt-3 border-t border-border flex flex-wrap gap-4 items-center">
+                                                        <div className="flex flex-col">
+                                                            <span className="text-[9px] font-black uppercase text-primary/80">Frete Total</span>
+                                                            <span className="text-sm font-black text-emerald-500">R$ {(rota.valorFrete || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                                        </div>
+                                                        <div className="flex flex-col">
+                                                            <span className="text-[9px] font-black uppercase text-primary/80">Total Depositado</span>
+                                                            <span className="text-sm font-black text-blue-500">R$ {totalDepositado.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                                        </div>
+                                                        <div className="flex flex-col">
+                                                            <span className="text-[9px] font-black uppercase text-primary/80">Saldo a Receber</span>
+                                                            <span className={`text-sm font-black ${saldoRestante > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>R$ {saldoRestante.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                                            {saldoRestante > 0 && <span className="text-[8px] bg-red-500/10 text-red-500 px-1 py-0.5 rounded font-black mt-0.5 w-fit uppercase">Falta Receber</span>}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
 
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 border border-border bg-surface p-4 rounded-xl relative overflow-hidden">
                                             {(!rota.entregue && rota.previsaoChegadaCorreios && new Date(rota.previsaoChegadaCorreios) < new Date()) && (
