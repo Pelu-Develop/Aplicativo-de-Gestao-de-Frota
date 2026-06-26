@@ -29,6 +29,7 @@ interface Carga {
     destino: string;
     status: string;
     rotas?: any[];
+    dataPrevistaDescarregamento?: string;
 }
 
 const CATEGORIAS = ['Peças', 'Serviços', 'Lavagem', 'Descarga', 'Estacionamento', 'Transporte', 'Borracharia', 'Outros'];
