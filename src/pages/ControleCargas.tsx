@@ -34,6 +34,9 @@ interface Rota {
     valorComissao?: number;
     anexosEntregas?: string[];
     diariasPagas?: boolean;
+    temDescarga?: boolean;
+    valorDescargaPrevisto?: number;
+    valorDescargaEfetivo?: number;
 }
 
 interface Viagem {
