@@ -1,16 +1,16 @@
-import { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, getDocs, updateDoc } from 'firebase/firestore';
+import { useState, useEffect, useRef } from 'react';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, getDocs, updateDoc, limit } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
 import CompanyLogo from '../assets/logo-golden.png';
-import { maskCPF } from '../utils/masks';
+import { maskCPF, unmaskCPF } from '../utils/masks';
 
 interface motoristaData {
     id: string;
     nome: string;
     cpf: string;
-    placaCavalo: string;
-    placaCarreta?: string;
+    cavaloPlaca: string;
+    bauPlaca?: string;
 }
 
 interface ItemGasto {
@@ -46,6 +46,8 @@ export default function PrestacaoContas() {
     const [rotaAnexos, setRotaAnexos] = useState<{[key: string]: string[]}>({}); // `${cargaId}_${rotaIndex}` -> array of URLs
     const [uploadingFiles, setUploadingFiles] = useState<{[key: string]: boolean}>({});
     const [existingDocId, setExistingDocId] = useState<string | null>(null);
+    const draftDocIdRef = useRef<string | null>(null);
+    const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
     const getLocalDatetime = () => {
         const tzOffset = (new Date()).getTimezoneOffset() * 60000;
@@ -125,56 +127,85 @@ export default function PrestacaoContas() {
 
     const handleIdentification = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!cpfInput) return;
+        const cpfLimpo = unmaskCPF(cpfInput);
+        if (cpfLimpo.length !== 11) {
+            showToast('Digite um CPF completo (11 dígitos)', 'error');
+            return;
+        }
         setLoading(true);
-
-        const q = query(collection(db, 'motoristas'), where('cpf', '==', cpfInput));
-
+        const cpfFormatado = maskCPF(cpfLimpo);
+        
         try {
-            const snapshot = await getDocs(q);
+            // Busca com CPF formatado (como é salvo no banco)
+            let snapshot = await getDocs(query(collection(db, 'motoristas'), where('cpf', '==', cpfFormatado)));
+            
+            // Fallback: tentar com CPF sem formatação
+            if (snapshot.empty) {
+                snapshot = await getDocs(query(collection(db, 'motoristas'), where('cpf', '==', cpfLimpo)));
+            }
+            
+            let motoristaDoc: { id: string; data: motoristaData } | null = null;
+            
             if (!snapshot.empty) {
-                const docData = snapshot.docs[0].data() as motoristaData;
-                const id = snapshot.docs[0].id;
+                motoristaDoc = { id: snapshot.docs[0].id, data: snapshot.docs[0].data() as motoristaData };
+            } else {
+                const allDrivers = await getDocs(query(collection(db, 'motoristas'), limit(2000)));
+                const match = allDrivers.docs.find(d => {
+                    const raw = String((d.data() as any).cpf ?? '').trim();
+                    return raw === cpfFormatado || raw === cpfLimpo;
+                });
+                if (match) {
+                    motoristaDoc = { id: match.id, data: match.data() as motoristaData };
+                }
+            }
+            
+            if (motoristaDoc) {
+                const { id, data: docData } = motoristaDoc;
                 setMotorista({ ...docData, id });
-                setPlacaCavalo(docData.placaCavalo || '');
-                setPlacaBau(docData.placaCarreta || '');
+                setPlacaCavalo(docData.cavaloPlaca || '');
+                setPlacaBau(docData.bauPlaca || '');
 
                 // Buscar se existe algum formulário devolvido ou pendente para este motorista
                 try {
-                    const qBruta = query(
-                        collection(db, 'despesas_frota'), 
-                        where('motoristaCPF', '==', cpfInput),
-                        where('status', '==', 'devolvido')
-                    );
+                    // Buscar todas as despesas do motorista
+                    const qDespesas = query(collection(db, 'despesas_frota'), where('motoristaId', '==', id));
+                    const snapDespesas = await getDocs(qDespesas);
+                    const devolvidoDoc = snapDespesas.docs.find(d => d.data().status === 'devolvido' || d.data().status === 'rascunho');
                     
-                    const snapBruta = await getDocs(qBruta);
-                    if (!snapBruta.empty) {
-                        const data = snapBruta.docs[0].data();
-                        setExistingDocId(snapBruta.docs[0].id);
+                    if (devolvidoDoc) {
+                        const data = devolvidoDoc.data();
+                        setExistingDocId(devolvidoDoc.id);
+                        draftDocIdRef.current = devolvidoDoc.id;
                         
-                        // Carregar dados salvos
                         if (data.items) setGastos(data.items);
                         if (data.rotaAnexos) setRotaAnexos(data.rotaAnexos);
                         if (data.viagensIds) setSelectedViagens(data.viagensIds);
                         if (data.dataInicioCompleta) setDataInicioViagem(data.dataInicioCompleta);
                         if (data.dataFimCompleta) setDataFimViagem(data.dataFimCompleta);
                         
-                        showToast('Encontramos um acerto devolvido para correção.', 'success');
+                        
+                        if (data.status === 'devolvido') {
+                            showToast('Encontramos um acerto devolvido para correção.', 'success');
+                        } else {
+                            showToast('Rascunho recuperado. Continue de onde parou.', 'success');
+                        }
                     } else {
                         setExistingDocId(null);
+                        draftDocIdRef.current = null;
                     }
                 } catch (draftError) {
-                    console.error("Erro ao buscar rascunho (pode ser falta de índice):", draftError);
+                    console.error("Erro ao buscar rascunho:", draftError);
                     setExistingDocId(null);
+                    draftDocIdRef.current = null;
                 }
 
                 setStep('form');
             } else {
-                showToast('CPF errado ou motorista não existente', 'error');
+                showToast('CPF não localizado. Verifique ou contate administração.', 'error');
             }
         } catch (error) {
-            console.error(error);
-            showToast('Erro ao realizar login', 'error');
+            console.error("Erro na busca:", error);
+            showToast('Erro ao buscar motorista. Tente novamente.', 'error');
         } finally {
             setLoading(false);
         }
@@ -192,10 +223,15 @@ export default function PrestacaoContas() {
             data: new Date().toISOString().split('T')[0],
             observacao: ''
         });
+        
+        // Auto-save when a new expense is added
+        setTimeout(() => saveDraft(rotaAnexos, [...gastos, currentItem]), 100);
     };
 
     const removeGasto = (index: number) => {
-        setGastos(gastos.filter((_, i: number) => i !== index));
+        const newGastos = gastos.filter((_, i: number) => i !== index);
+        setGastos(newGastos);
+        setTimeout(() => saveDraft(rotaAnexos, newGastos), 100);
     };
 
     const editGasto = (index: number) => {
@@ -224,6 +260,7 @@ export default function PrestacaoContas() {
             setRotaAnexos(prev => {
                 const next = { ...prev };
                 next[key] = [...(next[key] || []), ...urls];
+                setTimeout(() => saveDraft(next, gastos), 100);
                 return next;
             });
             showToast('Imagens salvas com sucesso!');
@@ -242,6 +279,7 @@ export default function PrestacaoContas() {
             if (next[key]) {
                 next[key] = next[key].filter((_, i) => i !== imgIndex);
             }
+            setTimeout(() => saveDraft(next, gastos), 100);
             return next;
         });
     };
@@ -278,6 +316,57 @@ export default function PrestacaoContas() {
     const totalDiarias = calculateDays() * valorDiaria;
     const totalDespesasItens = gastos.reduce((acc: number, curr: ItemGasto) => acc + curr.valor, 0);
     const totalGeral = totalDiarias + totalDespesasItens;
+
+    const saveDraft = async (anexosToSave = rotaAnexos, gastosToSave = gastos) => {
+        if (!motorista || submitting) return;
+        
+        try {
+            const payload: any = {
+                motoristaNomeOriginal: motorista.nome,
+                motoristaNome: motorista.nome,
+                motoristaId: motorista.id,
+                motoristaCPF: motorista.cpf,
+                placaCavalo: placaCavalo.toUpperCase(),
+                placaBau: placaBau.toUpperCase(),
+                dataInicio: dataInicioViagem.split('T')[0],
+                dataFim: dataFimViagem.split('T')[0],
+                dataInicioCompleta: dataInicioViagem,
+                dataFimCompleta: dataFimViagem,
+                diasDiaria: calculateDays(),
+                valorDiaria: valorDiaria,
+                totalDiarias: calculateDays() * valorDiaria,
+                valorTotal: (calculateDays() * valorDiaria) + gastosToSave.reduce((acc: number, curr: ItemGasto) => acc + curr.valor, 0),
+                saldoFinal: (calculateDays() * valorDiaria) + gastosToSave.reduce((acc: number, curr: ItemGasto) => acc + curr.valor, 0),
+                items: gastosToSave.map(g => ({
+                    categoria: g.categoria,
+                    valor: g.valor,
+                    descricao: g.observacao || '',
+                    data: g.data,
+                    anexos: g.anexos || []
+                })),
+                rotaAnexos: anexosToSave,
+                dataAtualizacao: serverTimestamp(),
+                origem: 'motorista_mobile',
+                tipo: 'prestacao_contas',
+                viagensIds: selectedViagens
+            };
+
+            const currentDraftId = draftDocIdRef.current || existingDocId;
+
+            if (currentDraftId) {
+                await updateDoc(doc(db, 'despesas_frota', currentDraftId), payload);
+            } else {
+                payload.status = 'rascunho';
+                payload.data = serverTimestamp();
+                payload.dataRegistro = serverTimestamp();
+                const docRef = await addDoc(collection(db, 'despesas_frota'), payload);
+                setExistingDocId(docRef.id);
+                draftDocIdRef.current = docRef.id;
+            }
+        } catch (error) {
+            console.error("Erro ao salvar rascunho:", error);
+        }
+    };
 
     const handleSubmit = async () => {
         if (!motorista) return;
@@ -359,6 +448,7 @@ export default function PrestacaoContas() {
                 setSelectedViagens([]);
                 setCpfInput('');
                 setExistingDocId(null);
+                draftDocIdRef.current = null;
             }, 2000);
         } catch (error) {
             console.error(error);
@@ -387,15 +477,15 @@ export default function PrestacaoContas() {
                         <p className="text-primary/80 text-xs font-bold uppercase tracking-widest">Identifique-se para continuar</p>
                     </div>
 
-                    <form onSubmit={handleIdentification} className="w-full space-y-4">
-                        <label className="flex flex-col gap-2">
-                            <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest ml-1">CPF do Motorista</span>
+                    <form onSubmit={handleIdentification} className="w-full space-y-5">
+                        <label className="flex flex-col gap-3">
+                            <span className="text-sm font-black text-primary/80 uppercase tracking-widest ml-1">CPF do Motorista</span>
                             <div className="relative">
                                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-primary material-symbols-outlined">fingerprint</span>
                                 <input
                                     type="text"
                                     inputMode="numeric"
-                                    className="w-full bg-surface border border-border rounded-2xl pl-12 pr-4 py-4 text-sm font-bold outline-none focus:border-primary transition-all shadow-xl"
+                                    className="w-full bg-surface border-2 border-border rounded-2xl pl-12 pr-4 py-4 text-base font-bold outline-none focus:border-primary shadow-xl h-14"
                                     placeholder="000.000.000-00"
                                     value={cpfInput}
                                     onChange={(e) => setCpfInput(maskCPF(e.target.value))}
@@ -406,15 +496,15 @@ export default function PrestacaoContas() {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full bg-primary text-background-dark py-4 rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-primary/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                            className="w-full bg-primary text-background-dark py-4 rounded-2xl font-black uppercase tracking-widest text-sm shadow-xl shadow-primary/20 active:scale-95 transition-all flex items-center justify-center gap-2 h-14"
                         >
                             {loading ? <span className="material-symbols-outlined animate-spin">refresh</span> : 'Entrar'}
                         </button>
                     </form>
                 </div>
                 {toast && (
-                    <div className="fixed bottom-8 px-6 py-4 rounded-2xl bg-red-500/10 border border-red-500 text-red-500 shadow-2xl animate-bounce">
-                        <span className="text-xs font-black uppercase">{toast.message}</span>
+                    <div className="fixed bottom-8 px-6 py-4 rounded-2xl bg-red-500/10 border border-red-500 text-red-500 shadow-2xl animate-bounce max-w-xs">
+                        <span className="text-sm font-black uppercase">{toast.message}</span>
                     </div>
                 )}
             </div>
@@ -422,7 +512,7 @@ export default function PrestacaoContas() {
     }
 
     return (
-        <div className="min-h-screen bg-background text-text-primary p-4 pb-20 flex flex-col items-center relative overflow-x-hidden">
+        <div className="min-h-screen bg-background text-text-primary p-4 pb-60 flex flex-col items-center relative overflow-x-hidden">
             <TimbradoBackground />
 
             <div className="relative z-10 w-full max-w-lg">
@@ -489,9 +579,20 @@ export default function PrestacaoContas() {
                                                             <span className="text-[8px] font-black text-primary uppercase">Rota {ri + 1}</span>
                                                             <span className="text-[8px] font-bold text-primary/80 uppercase">{r.status}</span>
                                                         </div>
-                                                        <span className="text-[10px] font-black text-text-primary uppercase tracking-tighter leading-tight">
-                                                            {r.origem} → {r.destino}
-                                                        </span>
+                                                        <div className="flex justify-between items-center mt-1">
+                                                            <span className="text-[10px] font-black text-text-primary uppercase tracking-tighter leading-tight flex-1">
+                                                                {r.origem} → {r.destino}
+                                                            </span>
+                                                            {r.cliente && (
+                                                                <span className="text-[8px] font-black bg-primary/10 text-primary px-1.5 py-0.5 rounded-sm uppercase ml-2 max-w-[100px] truncate" title={r.cliente}>
+                                                                    {r.cliente}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex justify-between items-center opacity-70">
+                                                            <span className="text-[8px] font-black text-primary uppercase">Previsão Chegada:</span>
+                                                            <span className="text-[8px] font-bold text-primary uppercase">{r.previsaoChegadaRota || r.previsaoDescarregamentoRota || c.dataPrevistaDescarregamento || '-'}</span>
+                                                        </div>
                                                         
                                                         {/* Route Attachment UI */}
                                                         <div className="mt-1 border-t border-primary/10 pt-2">
@@ -505,7 +606,7 @@ export default function PrestacaoContas() {
                                                                                         <span className="material-symbols-outlined text-red-500 text-3xl">picture_as_pdf</span>
                                                                                     </div>
                                                                                 ) : (
-                                                                                    <img src={url} alt="Comprovante" className="w-20 h-20 object-cover rounded-lg border border-primary/20" />
+                                                                                    <img src={url} alt="Comprovante" onClick={() => setLightboxUrl(url)} className="w-20 h-20 object-cover rounded-lg border border-primary/20 cursor-pointer active:scale-95 transition-transform" />
                                                                                 )}
                                                                                 <button 
                                                                                     onClick={() => removeRotaAnexo(c.id, ri, imgIndex)}
@@ -535,7 +636,6 @@ export default function PrestacaoContas() {
                                                                         type="file" 
                                                                         multiple
                                                                         accept="image/*,application/pdf" 
-                                                                        capture="environment"
                                                                         className="hidden" 
                                                                         disabled={uploadingFiles[`${c.id}_${ri}`]}
                                                                         onChange={(e) => uploadRotaAnexo(c.id, ri, e)}
@@ -611,11 +711,11 @@ export default function PrestacaoContas() {
                         </h2>
 
                         <div className="grid gap-5">
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 gap-4">
                                 <label className="flex flex-col gap-2">
-                                    <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest ml-1">Categoria</span>
+                                    <span className="text-sm font-black text-primary/80 uppercase tracking-widest ml-1">Categoria</span>
                                     <select
-                                        className="w-full bg-background border border-border rounded-2xl px-4 py-3 text-sm font-bold outline-none"
+                                        className="w-full bg-background border-2 border-border rounded-2xl px-4 py-4 text-base font-bold outline-none h-14"
                                         value={currentItem.categoria}
                                         onChange={(e) => setCurrentItem({ ...currentItem, categoria: e.target.value })}
                                     >
@@ -623,10 +723,10 @@ export default function PrestacaoContas() {
                                     </select>
                                 </label>
                                 <label className="flex flex-col gap-2">
-                                    <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest ml-1">Data Gasto</span>
+                                    <span className="text-sm font-black text-primary/80 uppercase tracking-widest ml-1">Data Gasto</span>
                                     <input
                                         type="date"
-                                        className="w-full bg-background border border-border rounded-2xl px-4 py-3 text-sm font-bold outline-none"
+                                        className="w-full bg-background border-2 border-border rounded-2xl px-4 py-4 text-base font-bold outline-none h-14"
                                         value={currentItem.data}
                                         onChange={(e) => setCurrentItem({ ...currentItem, data: e.target.value })}
                                     />
@@ -634,87 +734,90 @@ export default function PrestacaoContas() {
                             </div>
 
                             <div className="grid grid-cols-1 gap-4">
-                                <label className="flex flex-col gap-2">
+                                <div className="flex flex-col gap-3">
                                     <div className="flex justify-between items-center px-1">
-                                        <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest">Valor da Despesa</span>
-                                        <div className="flex items-center gap-2">
-                                            {currentItem.anexos && currentItem.anexos.length > 0 && (
-                                                <div className="flex gap-2">
-                                                    {currentItem.anexos.map((url, i) => (
-                                                        <div key={i} className="relative group shrink-0">
-                                                            {url.includes('.pdf') ? (
-                                                                <div className="w-8 h-8 bg-surface rounded flex items-center justify-center border border-primary/20"><span className="material-symbols-outlined text-red-500 text-sm">picture_as_pdf</span></div>
-                                                            ) : (
-                                                                <img src={url} alt="Comprovante" className="w-8 h-8 object-cover rounded border border-primary/20" />
-                                                            )}
-                                                            <button 
-                                                                type="button" 
-                                                                onClick={(e) => {
-                                                                    e.preventDefault();
-                                                                    setCurrentItem({...currentItem, anexos: (currentItem.anexos || []).filter((_, idx) => idx !== i)});
-                                                                }}
-                                                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0 shadow-md flex items-center justify-center size-4"
-                                                            >
-                                                                <span className="material-symbols-outlined text-[10px]">close</span>
-                                                            </button>
-                                                        </div>
-                                                    ))}
-                                                </div>
+                                        <span className="text-sm font-black text-primary/80 uppercase tracking-widest">Valor da Despesa</span>
+                                        <button
+                                            type="button"
+                                            disabled={uploadingFiles['despesa_atual']}
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                document.getElementById('despesa-foto-input')?.click();
+                                            }}
+                                            className="flex items-center gap-2 text-primary cursor-pointer"
+                                        >
+                                            {uploadingFiles['despesa_atual'] ? (
+                                                <span className="material-symbols-outlined text-base animate-spin">sync</span>
+                                            ) : (
+                                                <>
+                                                    <span className="material-symbols-outlined text-base">add_a_photo</span>
+                                                    <span className="text-sm font-black uppercase">Anexar Fotos</span>
+                                                </>
                                             )}
-                                            <label className="flex items-center gap-1 text-primary cursor-pointer hover:scale-105 transition-transform">
-                                                {uploadingFiles['despesa_atual'] ? (
-                                                    <span className="material-symbols-outlined text-sm animate-spin">sync</span>
-                                                ) : (
-                                                    <>
-                                                        <span className="material-symbols-outlined text-sm">add_a_photo</span>
-                                                        <span className="text-[8px] font-black uppercase tracking-widest">Anexar Fotos</span>
-                                                    </>
-                                                )}
-                                                <input 
-                                                    type="file" 
-                                                    multiple
-                                                    accept="image/*" 
-                                                    capture="environment"
-                                                    className="hidden" 
-                                                    disabled={uploadingFiles['despesa_atual']}
-                                                    onChange={uploadDespesaAnexo} 
-                                                />
-                                            </label>
-                                        </div>
+                                        </button>
+                                        <input
+                                            id="despesa-foto-input"
+                                            type="file"
+                                            multiple
+                                            accept="image/*"
+                                            className="hidden"
+                                            disabled={uploadingFiles['despesa_atual']}
+                                            onChange={uploadDespesaAnexo}
+                                        />
                                     </div>
+                                    {currentItem.anexos && currentItem.anexos.length > 0 && (
+                                        <div className="flex gap-2 overflow-x-auto pb-2">
+                                            {currentItem.anexos.map((url, i) => (
+                                                <div key={i} className="relative shrink-0">
+                                                    {url.includes('.pdf') ? (
+                                                        <div className="w-12 h-12 bg-surface rounded-lg flex items-center justify-center border border-primary/20"><span className="material-symbols-outlined text-red-500 text-lg">picture_as_pdf</span></div>
+                                                    ) : (
+                                                        <img src={url} alt="Comprovante" onClick={() => setLightboxUrl(url)} className="w-12 h-12 object-cover rounded-lg border border-primary/20 cursor-pointer active:scale-95 transition-transform" />
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            setCurrentItem({...currentItem, anexos: (currentItem.anexos || []).filter((_, idx) => idx !== i)});
+                                                        }}
+                                                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1 shadow-md"
+                                                    >
+                                                        <span className="material-symbols-outlined text-xs">close</span>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                     <div className="relative">
                                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-primary font-black">R$</span>
                                         <input
                                             type="number"
                                             step="0.01"
-                                            className="w-full bg-background border border-border rounded-2xl pl-10 pr-4 py-4 text-sm font-bold outline-none focus:border-primary shadow-inner"
+                                            inputMode="decimal"
+                                            className="w-full bg-background border-2 border-border rounded-2xl pl-12 pr-4 py-4 text-base font-bold outline-none focus:border-primary shadow-inner h-14"
                                             placeholder="0,00"
                                             value={currentItem.valor || ''}
                                             onChange={(e) => setCurrentItem({ ...currentItem, valor: parseFloat(e.target.value) || 0 })}
                                         />
                                     </div>
-                                </label>
+                                </div>
+
                                 <label className="flex flex-col gap-2">
-                                    <div className="flex justify-between items-center px-1">
-                                        <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest">Observação</span>
-                                        <span className="text-[9px] font-bold text-primary/80/60 uppercase italic">(Opcional)</span>
-                                    </div>
-                                    <div className="relative">
-                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-primary/40 material-symbols-outlined text-[18px]">edit_note</span>
-                                        <input
-                                            className="w-full bg-background border border-border rounded-2xl pl-12 pr-4 py-4 text-sm font-bold outline-none focus:border-primary transition-all shadow-inner"
-                                            placeholder="Ex: Borracharia na Rodovia BR-116..."
-                                            value={currentItem.observacao}
-                                            onChange={(e) => setCurrentItem({ ...currentItem, observacao: e.target.value })}
-                                        />
-                                    </div>
+                                    <span className="text-sm font-black text-primary/80 uppercase tracking-widest">Observação (Opcional)</span>
+                                    <input
+                                        className="w-full bg-background border-2 border-border rounded-2xl px-4 py-4 text-base font-bold outline-none focus:border-primary transition-all shadow-inner h-14"
+                                        placeholder="Ex: Borracharia na Rodovia BR-116..."
+                                        value={currentItem.observacao}
+                                        onChange={(e) => setCurrentItem({ ...currentItem, observacao: e.target.value })}
+                                    />
                                 </label>
                             </div>
 
                             <button
                                 type="button"
                                 onClick={addGasto}
-                                className="w-full bg-primary/10 border border-primary/30 text-primary py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] active:scale-95 transition-all mt-2"
+                                className="w-full bg-primary/10 border-2 border-primary/30 text-primary py-4 rounded-2xl font-black uppercase tracking-widest text-base active:scale-95 transition-all mt-2 h-14"
                             >
                                 Adicionar à Lista
                             </button>
@@ -743,7 +846,7 @@ export default function PrestacaoContas() {
                                                             {url.includes('.pdf') ? (
                                                                 <div className="w-16 h-16 bg-surface rounded-lg flex items-center justify-center border border-primary/10"><span className="material-symbols-outlined text-red-500 text-2xl">picture_as_pdf</span></div>
                                                             ) : (
-                                                                <img src={url} alt="Comprovante" className="w-16 h-16 object-cover rounded-lg border border-primary/10" />
+                                                                <img src={url} alt="Comprovante" onClick={() => setLightboxUrl(url)} className="w-16 h-16 object-cover rounded-lg border border-primary/10 cursor-pointer active:scale-95 transition-transform" />
                                                             )}
                                                             <button 
                                                                 type="button" 
@@ -783,40 +886,40 @@ export default function PrestacaoContas() {
                     )}
 
                     {/* Final Total Summary */}
-                    <div className="bg-background-dark/95 backdrop-blur-md border-2 border-primary/30 p-6 rounded-[2.5rem] shadow-2xl space-y-4">
-                        <div className="flex justify-between items-center pb-4 border-b border-border/50">
-                            <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest">Diárias ({calculateDays()}x)</span>
-                            <span className="text-lg font-black text-text-primary">R$ {totalDiarias.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    <div className="bg-background-dark/95 backdrop-blur-md border-2 border-primary/30 p-5 rounded-3xl shadow-2xl space-y-4">
+                        <div className="flex justify-between items-center pb-3 border-b border-border/50">
+                            <span className="text-sm font-black text-primary/80 uppercase tracking-widest">Diárias ({calculateDays()}x)</span>
+                            <span className="text-xl font-black text-text-primary">R$ {totalDiarias.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                         </div>
-                        <div className="flex justify-between items-center pb-4 border-b border-border/50">
-                            <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest">Total Despesas</span>
-                            <span className="text-lg font-black text-text-primary">R$ {totalDespesasItens.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                        <div className="flex justify-between items-center pb-3 border-b border-border/50">
+                            <span className="text-sm font-black text-primary/80 uppercase tracking-widest">Total Despesas</span>
+                            <span className="text-xl font-black text-text-primary">R$ {totalDespesasItens.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                         </div>
                         <div className="flex justify-between items-center pt-2">
-                            <span className="text-xs font-black text-primary uppercase tracking-widest">Total Geral Acerto</span>
+                            <span className="text-base font-black text-primary uppercase tracking-widest">Total Geral Acerto</span>
                             <span className="text-3xl font-black text-primary">
                                 R$ {totalGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                             </span>
                         </div>
+                    </div>
 
-                        <div className="pt-6">
-                            <div className="bg-background p-4 rounded-2xl border border-border mb-6">
-                                <p className="text-[10px] font-bold text-primary/80 leading-relaxed text-center italic">
-                                    Ao clicar em enviar, confirmo a veracidade de todas as diárias, gastos e comprovantes de rota aqui relacionados.
-                                </p>
-                            </div>
-
+                    {/* Fixed Submit Button for Mobile */}
+                    <div className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-md border-t border-border p-4 z-50">
+                        <div className="max-w-lg mx-auto">
+                            <p className="text-xs font-bold text-primary/80 mb-3 text-center px-4">
+                                Ao enviar, confirmo a veracidade de todas as diárias e gastos.
+                            </p>
                             <button
                                 onClick={() => setIsConfirmModalOpen(true)}
                                 disabled={submitting}
-                                className="w-full bg-primary text-background-dark py-5 rounded-[2rem] text-xs font-black uppercase tracking-[0.2em] shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
+                                className="w-full bg-primary text-background-dark py-4 rounded-2xl text-base font-black uppercase tracking-widest shadow-2xl shadow-primary/30 active:scale-95 transition-all flex items-center justify-center gap-2 h-14"
                             >
                                 {submitting ? (
                                     <span className="material-symbols-outlined animate-spin">sync</span>
                                 ) : (
                                     <>
-                                        <span className="material-symbols-outlined text-lg">check_circle</span>
-                                        Finalizar e Enviar Acerto
+                                        <span className="material-symbols-outlined text-xl">check_circle</span>
+                                        Enviar Acerto
                                     </>
                                 )}
                             </button>
@@ -824,6 +927,27 @@ export default function PrestacaoContas() {
                     </div>
                 </div>
             </div>
+
+            {/* Lightbox Modal */}
+            {lightboxUrl && (
+                <div
+                    className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4"
+                    onClick={() => setLightboxUrl(null)}
+                >
+                    <button
+                        onClick={() => setLightboxUrl(null)}
+                        className="absolute top-5 right-5 size-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white transition-colors z-10"
+                    >
+                        <span className="material-symbols-outlined text-2xl">close</span>
+                    </button>
+                    <img
+                        src={lightboxUrl}
+                        alt="Comprovante"
+                        className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                </div>
+            )}
 
             {/* Confirmation Modal */}
             {isConfirmModalOpen && (

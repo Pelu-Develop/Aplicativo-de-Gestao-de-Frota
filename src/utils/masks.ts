@@ -7,6 +7,8 @@ export const maskCPF = (value: string) => {
         .replace(/(-\d{2})\d+?$/, '$1');
 };
 
+export const unmaskCPF = (value: string) => value.replace(/\D/g, '');
+
 export const maskPhone = (value: string) => {
     return value
         .replace(/\D/g, '')

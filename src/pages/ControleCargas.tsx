@@ -323,6 +323,27 @@ export default function ControleCargas() {
         }
     }, [searchParams, loading]);
 
+    const getRouteNumDiarias = (rota: Rota | any) => {
+        if (!rota.dataChegadaEfetivaRota || !rota.dataDescarregamentoEfetivoRota) return 0;
+        const d1 = new Date(rota.dataChegadaEfetivaRota);
+        const d2 = new Date(rota.dataDescarregamentoEfetivoRota);
+        const diffDays = Math.floor((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
+        return diffDays > 0 ? diffDays : 0;
+    };
+
+    const getRouteTotalFrete = (rota: Rota | any) => {
+        const baseFrete = Number(rota.valorFrete) || 0;
+        const valorDiaria = clientes.find(c => c.nome === rota.cliente)?.valorDiaria || 0;
+        const numDiarias = getRouteNumDiarias(rota);
+        
+        let resultadoDescarga = 0;
+        if (rota.temDescarga) {
+            resultadoDescarga = (rota.valorDescargaPrevisto || 0) - (rota.valorDescargaEfetivo || 0);
+        }
+        
+        return baseFrete + (numDiarias * valorDiaria) + resultadoDescarga;
+    };
+
     const handleMotoristaChange = (nome: string) => {
         const m = motoristas.find(mot => mot.nome === nome);
         setFormData(prev => ({
@@ -435,7 +456,7 @@ export default function ControleCargas() {
             const destino = formData.rotas.length > 0 ? formData.rotas[formData.rotas.length - 1].destino : '';
             const cliente = formData.rotas.length > 0 ? formData.rotas[0].cliente : '';
             const peso = formData.rotas.reduce((acc, r) => acc + r.peso, 0);
-            const valorFrete = formData.rotas.reduce((acc, r) => acc + (Number(r.valorFrete) || 0), 0);
+            const valorFrete = formData.rotas.reduce((acc, r) => acc + getRouteTotalFrete(r), 0);
             const valorTotalCombustivel = formData.rotas.reduce((acc, r) => acc + ((Number(r.litrosAbastecidos) || 0) * (Number(r.valorLitroCombustivel) || 0)), 0);
             const isComissionada = formData.rotas.some(r => r.comissionada);
             
@@ -514,7 +535,7 @@ export default function ControleCargas() {
                 }];
             }
 
-            const totalFretes = rotas.reduce((acc, r) => acc + (r.valorFrete || 0), 0);
+            const totalFretes = rotas.reduce((acc, r) => acc + getRouteTotalFrete(r), 0);
             const totalAdiantamentos = rotas.reduce((acc, r) => acc + ((r.valorFrete || 0) * ((r.percentualAdiantamento || 0) / 100)), 0);
             const totalCombustivel = rotas.reduce((acc, r) => acc + ((r.litrosAbastecidos || 0) * (r.valorLitroCombustivel || 0)), 0);
             const resultadoOperacional = totalFretes - (totalDespesas + totalCombustivel);
@@ -587,7 +608,7 @@ export default function ControleCargas() {
     const viagensTotais = filteredViagens.length;
     
     // Calculate total values for dashboard
-    const valorTotal = filteredViagens.reduce((acc, curr) => acc + (curr.rotas?.reduce((sum: number, r: any) => sum + (r.valorFrete || 0), 0) || 0), 0);
+    const valorTotal = filteredViagens.reduce((acc, curr) => acc + (curr.rotas?.reduce((sum: number, r: any) => sum + getRouteTotalFrete(r), 0) || 0), 0);
     
     const filteredIds = filteredViagens.map(v => v.id);
     const totalDespesasDash = despesasGlobais
@@ -1075,11 +1096,13 @@ export default function ControleCargas() {
                                                 <div className="flex gap-4">
                                                     <div className="flex flex-col">
                                                         <span className="text-[9px] font-black uppercase text-primary/80">Adiantamento R$</span>
-                                                        <span className="text-sm font-bold text-blue-500">R$ {((rota.valorFrete || 0) * (rota.percentualAdiantamento || 0) / 100).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                                        <span className={`text-sm font-bold ${rota.adiantamentoPago ? 'text-blue-500' : 'text-blue-500/70'}`}>R$ {((rota.valorFrete || 0) * (rota.percentualAdiantamento || 0) / 100).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                                        {!rota.adiantamentoPago && <span className="text-[8px] bg-red-500/10 text-red-500 px-1 py-0.5 rounded font-black mt-1 w-fit uppercase">Falta Receber</span>}
                                                     </div>
                                                     <div className="flex flex-col">
                                                         <span className="text-[9px] font-black uppercase text-primary/80">Saldo R$</span>
-                                                        <span className="text-sm font-bold text-emerald-500">R$ {((rota.valorFrete || 0) - ((rota.valorFrete || 0) * (rota.percentualAdiantamento || 0) / 100)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                                        <span className={`text-sm font-bold ${rota.saldoPago ? 'text-emerald-500' : 'text-emerald-500/70'}`}>R$ {((rota.valorFrete || 0) - ((rota.valorFrete || 0) * (rota.percentualAdiantamento || 0) / 100)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                                        {!rota.saldoPago && <span className="text-[8px] bg-red-500/10 text-red-500 px-1 py-0.5 rounded font-black mt-1 w-fit uppercase">Falta Receber</span>}
                                                     </div>
                                                 </div>
                                             </div>
@@ -1173,10 +1196,7 @@ export default function ControleCargas() {
                                                      {(() => {
                                                          const valorDiaria = clientes.find(c => c.nome === rota.cliente)?.valorDiaria || 0;
                                                          if (rota.dataChegadaEfetivaRota && rota.dataDescarregamentoEfetivoRota) {
-                                                             const d1 = new Date(rota.dataChegadaEfetivaRota);
-                                                             const d2 = new Date(rota.dataDescarregamentoEfetivoRota);
-                                                             const diffDays = Math.floor((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
-                                                             const numDiarias = diffDays > 0 ? diffDays + 1 : 1;
+                                                             const numDiarias = getRouteNumDiarias(rota);
                                                              return (
                                                                  <>
                                                                      <div className="flex flex-col gap-1">
@@ -1190,11 +1210,13 @@ export default function ControleCargas() {
                                                                      <div className="flex flex-col gap-1">
                                                                          <span className="text-[9px] font-black uppercase text-primary/80">Total Diárias (R$)</span>
                                                                          <span className="text-lg font-black text-amber-500">R$ {(valorDiaria * numDiarias).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                                                         {!rota.diariasPagas && (valorDiaria * numDiarias) > 0 && <span className="text-[8px] bg-red-500/10 text-red-500 px-1 py-0.5 rounded font-black w-fit uppercase mt-0.5">Falta Receber</span>}
                                                                      </div>
                                                                      <div className="flex items-center gap-2">
                                                                          <input type="checkbox" className="rounded border-border text-amber-500 focus:ring-amber-500 size-4" checked={rota.diariasPagas || false} onChange={(e) => updateRota(index, 'diariasPagas', e.target.checked)} disabled={formData.status === 'Finalizado'} />
                                                                          <span className="text-[10px] font-black uppercase text-amber-500">Diárias Pagas</span>
                                                                      </div>
+
                                                                  </>
                                                              );
                                                          }
@@ -1206,6 +1228,44 @@ export default function ControleCargas() {
                                                          );
                                                      })()}
                                                  </div>
+                                             </div>
+
+                                             {/* Cálculo de Descarga */}
+                                             <div className="border border-blue-500/30 bg-blue-500/5 p-4 rounded-xl mt-4 mb-4">
+                                                 <div className="flex items-center justify-between mb-3">
+                                                     <div className="flex items-center gap-2">
+                                                         <span className="material-symbols-outlined text-[16px] text-blue-500">local_shipping</span>
+                                                         <span className="text-[10px] font-black uppercase text-blue-500 tracking-widest">Cálculo de Descarga</span>
+                                                     </div>
+                                                     <label className="flex items-center gap-2 cursor-pointer group">
+                                                         <input type="checkbox" className="rounded border-border text-blue-500 focus:ring-blue-500 size-4" checked={rota.temDescarga || false} onChange={(e) => updateRota(index, 'temDescarga', e.target.checked)} disabled={formData.status === 'Finalizado'} />
+                                                         <span className="text-[10px] font-black uppercase text-blue-500 group-hover:text-blue-400 transition-colors">Tem Descarga?</span>
+                                                     </label>
+                                                 </div>
+                                                 
+                                                 {rota.temDescarga && (
+                                                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3 border-t border-blue-500/10 pt-3">
+                                                         <label className="flex flex-col gap-1">
+                                                             <span className="text-[9px] font-black uppercase text-primary/80">Valor Previsto (Entrada) R$</span>
+                                                             <input type="number" step="0.01" className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-blue-500 font-bold" value={rota.valorDescargaPrevisto || ''} onChange={(e) => updateRota(index, 'valorDescargaPrevisto', parseFloat(e.target.value) || 0)} disabled={formData.status === 'Finalizado'} />
+                                                         </label>
+                                                         <label className="flex flex-col gap-1">
+                                                             <span className="text-[9px] font-black uppercase text-primary/80">Valor Efetivo (Saída) R$</span>
+                                                             <input type="number" step="0.01" className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-amber-500 font-bold" value={rota.valorDescargaEfetivo || ''} onChange={(e) => updateRota(index, 'valorDescargaEfetivo', parseFloat(e.target.value) || 0)} disabled={formData.status === 'Finalizado'} />
+                                                         </label>
+                                                         <div className="flex flex-col gap-1 justify-center md:col-span-2">
+                                                             <span className="text-[9px] font-black uppercase text-primary/80">Resultado da Descarga</span>
+                                                             {(() => {
+                                                                 const previsto = rota.valorDescargaPrevisto || 0;
+                                                                 const efetivo = rota.valorDescargaEfetivo || 0;
+                                                                 const diff = previsto - efetivo;
+                                                                 if (diff === 0) return <span className="text-sm font-black text-slate-500">R$ 0,00 (Zerou)</span>;
+                                                                 if (diff > 0) return <span className="text-sm font-black text-emerald-500">+ R$ {diff.toLocaleString('pt-BR', {minimumFractionDigits: 2})} (Sobra - Motorista Devolve)</span>;
+                                                                 return <span className="text-sm font-black text-red-500">- R$ {Math.abs(diff).toLocaleString('pt-BR', {minimumFractionDigits: 2})} (Falta - Cobrar Diferença)</span>;
+                                                             })()}
+                                                         </div>
+                                                     </div>
+                                                 )}
                                              </div>
 
                                         {rota.anexosEntregas && rota.anexosEntregas.length > 0 && (
