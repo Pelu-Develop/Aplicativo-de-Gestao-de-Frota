@@ -1462,14 +1462,14 @@ export default function Despesas() {
                                                         return (
                                                             <span key={idx}>
                                                                 <span className="font-bold">{tipoLabel}</span>: R$ {(dep.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                                                {idx < printingDespesa.depositos.length - 1 ? ' • ' : ''}
+                                                                {idx < (printingDespesa.depositos?.length || 0) - 1 ? ' • ' : ''}
                                                             </span>
                                                         );
                                                     })}
                                                 </div>
                                             </td>
                                             <td className="py-1.5 text-right font-black text-[10px] text-blue-600 whitespace-nowrap align-top">
-                                                R$ {printingDespesa.depositos.reduce((s: number, d: any) => s + (d.valor || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                R$ {(printingDespesa.depositos || []).reduce((s: number, d: any) => s + (d.valor || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                             </td>
                                         </tr>
                                     ) : (
