@@ -178,7 +178,10 @@ export default function PrestacaoContas() {
                         setExistingDocId(devolvidoDoc.id);
                         draftDocIdRef.current = devolvidoDoc.id;
                         
-                        if (data.items) setGastos(data.items);
+                        if (data.items) setGastos(data.items.map((item: any) => ({
+                                ...item,
+                                observacao: item.observacao || item.descricao || ''
+                            })));
                         if (data.rotaAnexos) setRotaAnexos(data.rotaAnexos);
                         if (data.viagensIds) setSelectedViagens(data.viagensIds);
                         if (data.dataInicioCompleta) setDataInicioViagem(data.dataInicioCompleta);
@@ -373,46 +376,68 @@ export default function PrestacaoContas() {
         if (!motorista) return;
         setSubmitting(true);
         try {
-            const payload = {
-                motoristaNomeOriginal: motorista.nome,
-                motoristaNome: motorista.nome,
-                motoristaId: motorista.id,
-                motoristaCPF: motorista.cpf,
-                placaCavalo: placaCavalo.toUpperCase(),
-                placaBau: placaBau.toUpperCase(),
-                dataInicio: dataInicioViagem.split('T')[0],
-                dataFim: dataFimViagem.split('T')[0],
-                dataInicioCompleta: dataInicioViagem,
-                dataFimCompleta: dataFimViagem,
-                diasDiaria: calculateDays(),
-                valorDiaria: valorDiaria,
-                totalDiarias: totalDiarias,
-                valorTotal: totalGeral,
-                saldoFinal: totalGeral,
-                items: gastos.map(g => ({
-                    categoria: g.categoria,
-                    valor: g.valor,
-                    descricao: g.observacao || '',
-                    data: g.data,
-                    anexos: g.anexos || []
-                })),
-                rotaAnexos: rotaAnexos,
-                status: 'pendente',
-                data: serverTimestamp(),
-                dataRegistro: serverTimestamp(),
-                origem: 'motorista_mobile',
-                tipo: 'prestacao_contas',
-                viagensIds: selectedViagens
-            };
+            const itemsFormatados = gastos.map(g => ({
+                categoria: g.categoria,
+                valor: g.valor,
+                descricao: g.observacao || '',
+                observacao: g.observacao || '',
+                data: g.data,
+                anexos: g.anexos || []
+            }));
 
             if (existingDocId) {
+                // UPDATE: não sobrescreve campos imutáveis como data/dataRegistro
                 await updateDoc(doc(db, 'despesas_frota', existingDocId), {
-                    ...payload,
-                    status: 'pendente', // Volta para pendente após correção
+                    motoristaNomeOriginal: motorista.nome,
+                    motoristaNome: motorista.nome,
+                    motoristaId: motorista.id,
+                    motoristaCPF: motorista.cpf,
+                    placaCavalo: placaCavalo.toUpperCase(),
+                    placaBau: placaBau.toUpperCase(),
+                    dataInicio: dataInicioViagem.split('T')[0],
+                    dataFim: dataFimViagem.split('T')[0],
+                    dataInicioCompleta: dataInicioViagem,
+                    dataFimCompleta: dataFimViagem,
+                    diasDiaria: calculateDays(),
+                    valorDiaria: valorDiaria,
+                    totalDiarias: totalDiarias,
+                    valorTotal: totalGeral,
+                    saldoFinal: totalGeral,
+                    items: itemsFormatados,
+                    rotaAnexos: rotaAnexos,
+                    status: 'pendente',
+                    origem: 'motorista_mobile',
+                    tipo: 'prestacao_contas',
+                    viagensIds: selectedViagens,
                     dataAtualizacao: serverTimestamp()
                 });
             } else {
-                await addDoc(collection(db, 'despesas_frota'), payload);
+                // CREATE: inclui todos os campos de data
+                await addDoc(collection(db, 'despesas_frota'), {
+                    motoristaNomeOriginal: motorista.nome,
+                    motoristaNome: motorista.nome,
+                    motoristaId: motorista.id,
+                    motoristaCPF: motorista.cpf,
+                    placaCavalo: placaCavalo.toUpperCase(),
+                    placaBau: placaBau.toUpperCase(),
+                    dataInicio: dataInicioViagem.split('T')[0],
+                    dataFim: dataFimViagem.split('T')[0],
+                    dataInicioCompleta: dataInicioViagem,
+                    dataFimCompleta: dataFimViagem,
+                    diasDiaria: calculateDays(),
+                    valorDiaria: valorDiaria,
+                    totalDiarias: totalDiarias,
+                    valorTotal: totalGeral,
+                    saldoFinal: totalGeral,
+                    items: itemsFormatados,
+                    rotaAnexos: rotaAnexos,
+                    status: 'pendente',
+                    data: serverTimestamp(),
+                    dataRegistro: serverTimestamp(),
+                    origem: 'motorista_mobile',
+                    tipo: 'prestacao_contas',
+                    viagensIds: selectedViagens
+                });
             }
             
             // Atualizar as Viagens com as fotos

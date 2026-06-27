@@ -23,6 +23,16 @@ interface Motorista {
     placaCarreta?: string;
 }
 
+interface DepositoAcerto {
+    id: string;
+    tipo: 'adiantamento_inicial' | 'durante_viagem' | 'final';
+    valor: number;
+    data: string;
+    destinatario: string;
+    formaPagamento: string;
+    observacao: string;
+}
+
 interface ItemDespesa {
     categoria: string;
     valor: number;
@@ -46,6 +56,7 @@ interface Despesa {
     totalDiarias: number;
     comissaoCombustivel: number;
     adiantamento: number;
+    depositos?: DepositoAcerto[];
     items: ItemDespesa[];
     valorTotal: number;
     saldoFinal: number;
@@ -91,6 +102,7 @@ export default function Despesas() {
         valorDiaria: 110,
         comissaoCombustivel: 0,
         adiantamento: 0,
+        depositos: [] as DepositoAcerto[],
         items: [] as ItemDespesa[],
         status: 'pendente' as 'pendente' | 'finalizado'
     });
@@ -310,6 +322,7 @@ export default function Despesas() {
             valorDiaria: globalValorDiaria,
             comissaoCombustivel: 0,
             adiantamento: 0,
+            depositos: [] as DepositoAcerto[],
             items: [],
             status: 'pendente'
         });
@@ -329,6 +342,7 @@ export default function Despesas() {
             valorDiaria: despesa.valorDiaria || 110,
             comissaoCombustivel: despesa.comissaoCombustivel || 0,
             adiantamento: despesa.adiantamento || 0,
+            depositos: despesa.depositos || [],
             items: despesa.items || [],
             status: despesa.status || 'pendente'
         });
@@ -376,7 +390,9 @@ export default function Despesas() {
         const totalDiarias = dias * formData.valorDiaria;
         const totalItems = formData.items.reduce((acc, curr) => acc + curr.valor, 0);
         const valorTotal = totalDiarias + totalItems + (formData.comissaoCombustivel || 0);
-        const saldoFinal = valorTotal - (formData.adiantamento || 0);
+        const totalDepositos = (formData.depositos || []).reduce((s, d) => s + (d.valor || 0), 0);
+        const totalAdiantamento = totalDepositos || (formData.adiantamento || 0);
+        const saldoFinal = valorTotal - totalAdiantamento;
 
         if (!formData.motoristaNome) {
             showToast('Selecione um motorista', 'error');
@@ -400,7 +416,8 @@ export default function Despesas() {
                 valorDiaria: formData.valorDiaria,
                 totalDiarias: totalDiarias,
                 comissaoCombustivel: formData.comissaoCombustivel,
-                adiantamento: formData.adiantamento || 0,
+                adiantamento: totalAdiantamento,
+                depositos: formData.depositos || [],
                 items: formData.items,
                 valorTotal: valorTotal,
                 saldoFinal: saldoFinal,
@@ -420,7 +437,7 @@ export default function Despesas() {
             }
 
             setIsFormOpen(false);
-            setFormData({ motoristaNome: '', motoristaCPF: '', placaCavalo: '', placaBau: '', viagensIds: [], dataInicio: '', dataFim: '', valorDiaria: 110, comissaoCombustivel: 0, adiantamento: 0, items: [], status: 'pendente' });
+            setFormData({ motoristaNome: '', motoristaCPF: '', placaCavalo: '', placaBau: '', viagensIds: [], dataInicio: '', dataFim: '', valorDiaria: 110, comissaoCombustivel: 0, adiantamento: 0, depositos: [], items: [], status: 'pendente' });
         } catch (error) {
             console.error(error);
             showToast('Erro ao salvar acerto', 'error');
@@ -953,17 +970,6 @@ export default function Despesas() {
                                         />
                                     </label>
                                     <label className="flex flex-col gap-1">
-                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest ml-1">Adiantamento</span>
-                                        <input
-                                            type="number"
-                                            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm text-blue-500 font-bold outline-none disabled:opacity-50"
-                                            placeholder="Recebido"
-                                            value={formData.adiantamento === 0 ? '' : formData.adiantamento}
-                                            onChange={(e) => setFormData({ ...formData, adiantamento: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
-                                            disabled={submitting || formData.status === 'finalizado'}
-                                        />
-                                    </label>
-                                    <label className="flex flex-col gap-1">
                                         <span className="text-[9px] font-black text-text-muted uppercase tracking-widest ml-1">Comissão Comb.</span>
                                         <input
                                             type="number"
@@ -975,6 +981,125 @@ export default function Despesas() {
                                     </label>
                                 </div>
                             </div>
+
+                            {/* === PAINEL DE DEPÓSITOS / ADIANTAMENTOS === */}
+                            {(() => {
+                                const depositos: DepositoAcerto[] = formData.depositos || [];
+                                const totalDep = depositos.reduce((s, d) => s + (d.valor || 0), 0);
+
+                                const addDeposito = (tipo: DepositoAcerto['tipo']) => {
+                                    const nd: DepositoAcerto = {
+                                        id: Math.random().toString(36).substr(2, 9),
+                                        tipo,
+                                        valor: 0,
+                                        data: new Date().toISOString().split('T')[0],
+                                        destinatario: formData.motoristaNome || 'Motorista',
+                                        formaPagamento: '',
+                                        observacao: ''
+                                    };
+                                    setFormData({ ...formData, depositos: [...depositos, nd] });
+                                };
+
+                                const updateDeposito = (id: string, field: keyof DepositoAcerto, value: any) => {
+                                    setFormData({
+                                        ...formData,
+                                        depositos: depositos.map(d => d.id === id ? { ...d, [field]: value } : d)
+                                    });
+                                };
+
+                                const removeDeposito = (id: string) => {
+                                    setFormData({ ...formData, depositos: depositos.filter(d => d.id !== id) });
+                                };
+
+                                const tipoInfo = (tipo: DepositoAcerto['tipo']) => {
+                                    if (tipo === 'adiantamento_inicial') return { label: 'Adiantamento Inicial', color: 'blue', icon: 'paid' };
+                                    if (tipo === 'durante_viagem') return { label: 'Em Viagem', color: 'amber', icon: 'currency_exchange' };
+                                    return { label: 'Depósito Final', color: 'emerald', icon: 'account_balance' };
+                                };
+
+                                return (
+                                    <div className="border border-primary/20 bg-background/50 rounded-2xl p-4">
+                                        <div className="flex items-center justify-between mb-3 pb-2 border-b border-border">
+                                            <div className="flex items-center gap-2">
+                                                <span className="material-symbols-outlined text-primary text-base">payments</span>
+                                                <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">Adiantamentos & Depósitos ao Motorista</span>
+                                            </div>
+                                            <div className="flex gap-1.5">
+                                                <button type="button" onClick={() => addDeposito('adiantamento_inicial')} disabled={formData.status === 'finalizado'} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-500/10 text-blue-500 text-[9px] font-black uppercase hover:bg-blue-500/20 transition-colors disabled:opacity-40">
+                                                    <span className="material-symbols-outlined text-[12px]">add</span>Inicial
+                                                </button>
+                                                <button type="button" onClick={() => addDeposito('durante_viagem')} disabled={formData.status === 'finalizado'} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/10 text-amber-500 text-[9px] font-black uppercase hover:bg-amber-500/20 transition-colors disabled:opacity-40">
+                                                    <span className="material-symbols-outlined text-[12px]">add</span>Em Viagem
+                                                </button>
+                                                <button type="button" onClick={() => addDeposito('final')} disabled={formData.status === 'finalizado'} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-500 text-[9px] font-black uppercase hover:bg-emerald-500/20 transition-colors disabled:opacity-40">
+                                                    <span className="material-symbols-outlined text-[12px]">add</span>Final
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {depositos.length === 0 ? (
+                                            <p className="text-[10px] text-text-muted italic text-center py-2">Nenhum depósito registrado. Use os botões acima para adicionar.</p>
+                                        ) : (
+                                            <div className="flex flex-col gap-2">
+                                                {depositos.map(dep => {
+                                                    const { label, color, icon } = tipoInfo(dep.tipo);
+                                                    return (
+                                                        <div key={dep.id} className={`border border-${color}-500/30 bg-${color}-500/5 rounded-xl p-3`}>
+                                                            <div className="flex items-center justify-between mb-2">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className={`material-symbols-outlined text-[13px] text-${color}-500`}>{icon}</span>
+                                                                    <span className={`text-[9px] font-black uppercase text-${color}-500`}>{label}</span>
+                                                                </div>
+                                                                {formData.status !== 'finalizado' && (
+                                                                    <button type="button" onClick={() => removeDeposito(dep.id)} className="text-red-400 hover:text-red-500 transition-colors">
+                                                                        <span className="material-symbols-outlined text-[14px]">delete</span>
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                                                                <label className="flex flex-col gap-1">
+                                                                    <span className="text-[9px] font-black uppercase text-text-muted">Valor R$</span>
+                                                                    <input type="number" step="0.01" className={`w-full bg-background border border-border rounded-lg px-2 py-1.5 text-xs font-bold text-${color}-500 outline-none`} value={dep.valor || ''} onChange={e => updateDeposito(dep.id, 'valor', parseFloat(e.target.value) || 0)} disabled={formData.status === 'finalizado'} />
+                                                                </label>
+                                                                <label className="flex flex-col gap-1">
+                                                                    <span className="text-[9px] font-black uppercase text-text-muted">Data</span>
+                                                                    <input type="date" className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-xs outline-none" value={dep.data} onChange={e => updateDeposito(dep.id, 'data', e.target.value)} disabled={formData.status === 'finalizado'} />
+                                                                </label>
+                                                                <label className="flex flex-col gap-1">
+                                                                    <span className="text-[9px] font-black uppercase text-text-muted">Destinatário</span>
+                                                                    <input type="text" className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-xs outline-none" value={dep.destinatario} onChange={e => updateDeposito(dep.id, 'destinatario', e.target.value)} disabled={formData.status === 'finalizado'} />
+                                                                </label>
+                                                                <label className="flex flex-col gap-1">
+                                                                    <span className="text-[9px] font-black uppercase text-text-muted">Forma Transf.</span>
+                                                                    <select className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-xs outline-none" value={dep.formaPagamento || ''} onChange={e => updateDeposito(dep.id, 'formaPagamento', e.target.value)} disabled={formData.status === 'finalizado'}>
+                                                                        <option value="">Selecione</option>
+                                                                        <option value="Pix">Pix</option>
+                                                                        <option value="Depósito Bancário">Depósito Bancário</option>
+                                                                        <option value="Transferência">Transferência</option>
+                                                                        <option value="Dinheiro">Dinheiro</option>
+                                                                        <option value="Pamcard">Pamcard</option>
+                                                                        <option value="Cheque">Cheque</option>
+                                                                        <option value="Outro">Outro</option>
+                                                                    </select>
+                                                                </label>
+                                                                <label className="flex flex-col gap-1">
+                                                                    <span className="text-[9px] font-black uppercase text-text-muted">Observação</span>
+                                                                    <input type="text" placeholder="Detalhes..." className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-xs outline-none" value={dep.observacao} onChange={e => updateDeposito(dep.id, 'observacao', e.target.value)} disabled={formData.status === 'finalizado'} />
+                                                                </label>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+
+                                        <div className="mt-3 pt-2 border-t border-border flex items-center justify-between">
+                                            <span className="text-[9px] font-black uppercase text-text-muted">Total Depositado ao Motorista</span>
+                                            <span className="text-sm font-black text-blue-500">R$ {totalDep.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
 
                             {/* Seção de Itens (Peças, Serviços, etc) */}
                             <div className={`space-y-4 ${formData.status === 'finalizado' ? 'opacity-50 pointer-events-none' : ''}`}>
@@ -1094,12 +1219,12 @@ export default function Despesas() {
                                 </div>
                                 <div className="flex flex-col border-l border-border pl-6">
                                     <span className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1 ml-0.5">Saldo a Receber/Pagar</span>
-                                    <span className={`text-2xl font-black tracking-tight ${((calculateDiarias() * formData.valorDiaria) + formData.items.reduce((acc, curr) => acc + curr.valor, 0) + (formData.comissaoCombustivel || 0) - (formData.adiantamento || 0)) > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
+                                    <span className={`text-2xl font-black tracking-tight ${((calculateDiarias() * formData.valorDiaria) + formData.items.reduce((acc, curr) => acc + curr.valor, 0) + (formData.comissaoCombustivel || 0) - ((formData.depositos || []).reduce((s: number, d: DepositoAcerto) => s + (d.valor || 0), 0) || (formData.adiantamento || 0))) > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
                                         R$ {(
                                             (calculateDiarias() * formData.valorDiaria) +
                                             formData.items.reduce((acc, curr) => acc + curr.valor, 0) +
                                             (formData.comissaoCombustivel || 0) -
-                                            (formData.adiantamento || 0)
+                                            ((formData.depositos || []).reduce((s: number, d: DepositoAcerto) => s + (d.valor || 0), 0) || (formData.adiantamento || 0))
                                         ).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                     </span>
                                 </div>
@@ -1326,10 +1451,33 @@ export default function Despesas() {
                                         <td colSpan={2} className="py-2 font-black uppercase text-right text-[10px]">Subtotal de Despesas</td>
                                         <td className="py-2 text-right font-black text-xs text-primary whitespace-nowrap">R$ {printingDespesa.valorTotal?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                                     </tr>
-                                    <tr className="border-b border-gray-300">
-                                        <td colSpan={2} className="py-1.5 font-bold uppercase text-right text-[10px] text-blue-600">(-) Adiantamento de Viagem</td>
-                                        <td className="py-1.5 text-right font-bold text-[10px] text-blue-600 whitespace-nowrap">R$ {printingDespesa.adiantamento?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                                    </tr>
+                                    {/* Listar depósitos de forma compacta (inline) para economizar espaço */}
+                                    {printingDespesa.depositos && printingDespesa.depositos.length > 0 ? (
+                                        <tr className="border-b border-gray-300">
+                                            <td colSpan={2} className="py-1.5 text-right leading-tight">
+                                                <div className="font-black uppercase text-[10px] text-blue-600 mb-0.5">(-) Total Adiantamentos</div>
+                                                <div className="text-[8px] text-gray-500">
+                                                    {printingDespesa.depositos.map((dep: any, idx: number) => {
+                                                        const tipoLabel = dep.tipo === 'adiantamento_inicial' ? 'Inicial' : dep.tipo === 'durante_viagem' ? 'Em Viagem' : 'Final';
+                                                        return (
+                                                            <span key={idx}>
+                                                                <span className="font-bold">{tipoLabel}</span>: R$ {(dep.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                                {idx < printingDespesa.depositos.length - 1 ? ' • ' : ''}
+                                                            </span>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </td>
+                                            <td className="py-1.5 text-right font-black text-[10px] text-blue-600 whitespace-nowrap align-top">
+                                                R$ {printingDespesa.depositos.reduce((s: number, d: any) => s + (d.valor || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        <tr className="border-b border-gray-300">
+                                            <td colSpan={2} className="py-1.5 font-bold uppercase text-right text-[10px] text-blue-600">(-) Adiantamento de Viagem</td>
+                                            <td className="py-1.5 text-right font-bold text-[10px] text-blue-600 whitespace-nowrap">R$ {printingDespesa.adiantamento?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                        </tr>
+                                    )}
                                     <tr className="bg-gray-100">
                                         <td colSpan={2} className="py-2 px-4 font-black uppercase text-right text-sm">
                                             {printingDespesa.saldoFinal > 0 ? 'Saldo Devedor / Próxima Viagem' : 'Saldo a Receber'}
