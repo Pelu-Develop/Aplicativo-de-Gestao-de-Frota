@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, getDocs, updateDoc, limit } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
 import CompanyLogo from '../assets/logo-golden.png';
+import PrintLogo from '../assets/logo-pdf.png';
 import { maskCPF, unmaskCPF } from '../utils/masks';
 
 interface motoristaData {
@@ -30,12 +31,14 @@ interface Carga {
     status: string;
     rotas?: any[];
     dataPrevistaDescarregamento?: string;
+    dataSaida?: string;
 }
 
 const CATEGORIAS = ['Peças', 'Serviços', 'Lavagem', 'Descarga', 'Estacionamento', 'Transporte', 'Borracharia', 'Outros'];
 
 export default function PrestacaoContas() {
-    const [step, setStep] = useState<'identification' | 'form'>('identification');
+    const [step, setStep] = useState<'identification' | 'form' | 'historico'>('identification');
+    const [historicoDespesas, setHistoricoDespesas] = useState<any[]>([]);
     const [cpfInput, setCpfInput] = useState('');
     const [motorista, setMotorista] = useState<motoristaData | null>(null);
     const [cargas, setCargas] = useState<Carga[]>([]);
@@ -49,6 +52,7 @@ export default function PrestacaoContas() {
     const [existingDocId, setExistingDocId] = useState<string | null>(null);
     const draftDocIdRef = useRef<string | null>(null);
     const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+    const [printingDespesa, setPrintingDespesa] = useState<any | null>(null);
 
     const getLocalDatetime = () => {
         const tzOffset = (new Date()).getTimezoneOffset() * 60000;
@@ -108,6 +112,28 @@ export default function PrestacaoContas() {
             unsubscribeCargas();
         };
     }, [motorista]);
+
+    useEffect(() => {
+        if (step === 'historico' && motorista) {
+            setLoading(true);
+            const q = query(
+                collection(db, 'despesas_frota'), 
+                where('motoristaId', '==', motorista.id),
+                where('status', '==', 'finalizado')
+            );
+            const unsub = onSnapshot(q, snap => {
+                const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                list.sort((a: any, b: any) => {
+                    const dA = a.dataRegistro?.toMillis() || 0;
+                    const dB = b.dataRegistro?.toMillis() || 0;
+                    return dB - dA;
+                });
+                setHistoricoDespesas(list);
+                setLoading(false);
+            });
+            return () => unsub();
+        }
+    }, [step, motorista]);
 
     const showToast = (message: string, type: 'success' | 'error' = 'success') => {
         setToast({ message, type });
@@ -441,7 +467,7 @@ export default function PrestacaoContas() {
             }
             
             // Atualizar as Viagens com as fotos
-            const cargasToUpdate = new Set(Object.keys(rotaAnexos).map(k => k.split('_')[0]));
+            const cargasToUpdate = Array.from(new Set(Object.keys(rotaAnexos).map(k => k.split('_')[0])));
             for (const cId of cargasToUpdate) {
                 const cargaAtual = cargas.find(c => c.id === cId);
                 if (cargaAtual && cargaAtual.rotas) {
@@ -541,12 +567,20 @@ export default function PrestacaoContas() {
         <div className="min-h-screen bg-background text-text-primary p-4 pb-60 flex flex-col items-center relative overflow-x-hidden">
             <TimbradoBackground />
 
+            {step === 'form' && (
             <div className="relative z-10 w-full max-w-lg">
                 {/* Header */}
                 <div className="flex flex-col items-center mb-6">
                     <img src={CompanyLogo} alt="Golden" className="h-14 mb-4" />
                     <h1 className="text-xl font-black uppercase tracking-tight text-center">Prestação de Contas</h1>
                     <p className="text-primary/80 text-[10px] font-black uppercase tracking-widest mt-1">Identificado: {motorista?.nome}</p>
+                    <button 
+                        onClick={() => setStep('historico')} 
+                        className="mt-4 px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-primary/20 transition-all"
+                    >
+                        <span className="material-symbols-outlined text-sm">history</span>
+                        Histórico de Acertos Fechados
+                    </button>
                 </div>
 
                 <div className="space-y-6">
@@ -953,6 +987,7 @@ export default function PrestacaoContas() {
                     </div>
                 </div>
             </div>
+            )}
 
             {/* Lightbox Modal */}
             {lightboxUrl && (
@@ -972,6 +1007,101 @@ export default function PrestacaoContas() {
                         className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl"
                         onClick={(e) => e.stopPropagation()}
                     />
+                </div>
+            )}            {step === 'historico' && (
+                <div className="relative z-10 w-full max-w-lg">
+                    <div className="flex flex-col items-center mb-6">
+                        <img src={CompanyLogo} alt="Golden" className="h-14 mb-4" />
+                        <h1 className="text-xl font-black uppercase tracking-tight text-center">Histórico</h1>
+                        <p className="text-primary/80 text-[10px] font-black uppercase tracking-widest mt-1">Relatórios Fechados</p>
+                    </div>
+
+                    <div className="flex gap-2 mb-6">
+                        <button 
+                            onClick={() => setStep('form')} 
+                            className="flex-1 bg-surface border border-primary/20 text-primary py-3 rounded-xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 hover:bg-primary/10 transition-colors"
+                        >
+                            <span className="material-symbols-outlined text-sm">arrow_back</span>
+                            Voltar
+                        </button>
+                    </div>
+
+                    {loading ? (
+                        <div className="flex justify-center p-8">
+                            <span className="material-symbols-outlined animate-spin text-primary text-4xl">refresh</span>
+                        </div>
+                    ) : historicoDespesas.length === 0 ? (
+                        <div className="bg-surface/80 border border-primary/20 p-8 rounded-3xl text-center space-y-2">
+                            <span className="material-symbols-outlined text-4xl text-primary/40">history_off</span>
+                            <p className="text-sm font-bold text-primary/60">Nenhum acerto fechado encontrado.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {historicoDespesas.map((despesa: any) => (
+                                <div key={despesa.id} className="bg-surface/80 backdrop-blur-sm border border-emerald-500/30 p-5 rounded-3xl shadow-sm space-y-4">
+                                    <div className="flex justify-between items-start border-b border-primary/10 pb-3">
+                                        <div>
+                                            <span className="text-[10px] font-black text-primary/60 uppercase tracking-widest block mb-1">Período</span>
+                                            <span className="text-sm font-black text-text-primary uppercase">
+                                                {despesa.dataInicio ? new Date(despesa.dataInicio).toLocaleDateString('pt-BR', {timeZone: 'UTC'}) : '-'} a {despesa.dataFim ? new Date(despesa.dataFim).toLocaleDateString('pt-BR', {timeZone: 'UTC'}) : '-'}
+                                            </span>
+                                        </div>
+                                        <div className="text-right flex flex-col items-end gap-2">
+                                            <div className="text-right">
+                                                <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest block mb-1">Status</span>
+                                                <span className="text-sm font-black text-emerald-500 uppercase flex items-center gap-1 bg-emerald-500/10 px-2 py-1 rounded-lg">
+                                                    <span className="material-symbols-outlined text-sm">check_circle</span>
+                                                    Fechado
+                                                </span>
+                                            </div>
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); setPrintingDespesa(despesa); }}
+                                                className="bg-primary/10 text-primary hover:bg-primary hover:text-background-dark px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-colors flex items-center gap-1"
+                                            >
+                                                <span className="material-symbols-outlined text-[16px]">print</span> Documento
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <span className="text-[10px] font-black text-primary/60 uppercase tracking-widest block mb-1">Total Despesas</span>
+                                            <span className="text-sm font-black text-text-primary">R$ {(despesa.valorTotal || 0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] font-black text-primary/60 uppercase tracking-widest block mb-1">Adiantamentos</span>
+                                            <span className="text-sm font-black text-blue-500">
+                                                R$ {((despesa.depositos || []).reduce((s: number, d: any) => s + (d.valor || 0), 0) || (despesa.adiantamento || 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] font-black text-primary/60 uppercase tracking-widest block mb-1">Placas</span>
+                                            <span className="text-xs font-bold text-text-primary uppercase">{despesa.placaCavalo} {despesa.placaBau ? `/ ${despesa.placaBau}` : ''}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] font-black text-primary/60 uppercase tracking-widest block mb-1">Resultado Final</span>
+                                            <span className={`text-sm font-black ${(despesa.saldoFinal || 0) > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
+                                                {(despesa.saldoFinal || 0) > 0 ? 'DEVENDO ' : 'RECEBER '} 
+                                                R$ {Math.abs(despesa.saldoFinal || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    {despesa.items && despesa.items.length > 0 && (
+                                        <div className="mt-4 space-y-2">
+                                            <span className="text-[10px] font-black text-primary/80 uppercase tracking-widest">Itens Lançados</span>
+                                            <div className="space-y-1">
+                                                {despesa.items.map((item: any, idx: number) => (
+                                                    <div key={idx} className="flex justify-between items-center bg-background p-2 rounded-lg text-xs">
+                                                        <span className="font-bold text-primary/80 truncate pr-2 flex-1">{item.categoria} <span className="font-normal opacity-70">- {item.descricao || item.observacao || ''}</span></span>
+                                                        <span className="font-black">R$ {(item.valor || 0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -1013,6 +1143,265 @@ export default function PrestacaoContas() {
                 <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 z-[200] border transition-all animate-bounce ${toast.type === 'error' ? 'bg-red-500/10 border-red-500 text-red-500' : 'bg-green-500/10 border-green-500 text-green-500'}`}>
                     <span className="material-symbols-outlined">{toast.type === 'error' ? 'error' : 'check_circle'}</span>
                     <span className="text-xs font-black uppercase tracking-widest">{toast.message}</span>
+                </div>
+            )}
+
+            {/* Print Modal - Documento Legal */}
+            {printingDespesa && (
+                <div className="fixed inset-0 z-[150] bg-white text-black overflow-y-auto p-10 print:p-0 print:overflow-visible">
+                    <style>
+                        {`
+                            @media print {
+                                @page { size: A4; margin: 1cm; }
+                                body * { visibility: hidden; }
+                                .print-container, .print-container * { visibility: visible; }
+                                .print-container { 
+                                    position: absolute; 
+                                    left: 0; 
+                                    top: 0; 
+                                    width: 100%; 
+                                    box-shadow: none !important;
+                                    border: none !important;
+                                    padding: 0 !important;
+                                }
+                                .no-break { break-inside: avoid; }
+                                table { width: 100% !important; }
+                            }
+                        `}
+                    </style>
+                    <div className="print-container max-w-[800px] mx-auto bg-white p-8 border border-gray-200 shadow-xl print:shadow-none print:border-none rounded-sm">
+                        {/* Header do Documento */}
+                        <div className="flex justify-between items-start border-b-[3px] border-black pb-2 mb-3">
+                            <div className="flex items-center gap-3">
+                                <img src={PrintLogo} alt="Logo" className="h-12 w-auto object-contain" />
+                                <div>
+                                    <h1 className="text-2xl font-black uppercase tracking-tighter mb-0.5">Acerto de Viagem</h1>
+                                    <p className="text-[10px] font-bold text-gray-600 uppercase">Golden Gestão de Frota</p>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-[8px] font-black uppercase">Data do Registro</p>
+                                <p className="text-base font-bold">{printingDespesa.dataRegistro?.toDate?.() ? printingDespesa.dataRegistro.toDate().toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR')}</p>
+                                <p className="text-[9px] text-gray-500 font-bold uppercase mt-0.5">ID: {printingDespesa.id.slice(0, 8).toUpperCase()}</p>
+                            </div>
+                        </div>
+
+                        {/* Dados do Motorista e Veículo */}
+                        <div className="grid grid-cols-2 gap-4 mb-3">
+                            <div className="space-y-1">
+                                <h2 className="text-[8px] font-black uppercase tracking-widest border-b border-gray-300 pb-0.5">Informações do Motorista</h2>
+                                <div>
+                                    <p className="text-[8px] text-gray-500 uppercase font-black">Nome Completo</p>
+                                    <p className="text-sm font-bold leading-none">{printingDespesa.motoristaNome}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[8px] text-gray-500 uppercase font-black">CPF</p>
+                                    <p className="text-sm font-bold leading-none">{printingDespesa.motoristaCPF || '---.---.------'}</p>
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <h2 className="text-[8px] font-black uppercase tracking-widest border-b border-gray-300 pb-0.5">Equipamento</h2>
+                                <div className="flex gap-4">
+                                    <div>
+                                        <p className="text-[8px] text-gray-500 uppercase font-black">Placa Cavalo</p>
+                                        <p className="text-base font-black tracking-tight leading-none">{printingDespesa.placaCavalo}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[8px] text-gray-500 uppercase font-black">Placa Baú</p>
+                                        <p className="text-base font-black tracking-tight leading-none">{printingDespesa.placaBau}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Detalhes da Viagem */}
+                        <div className="mb-3">
+                            <h2 className="text-[8px] font-black uppercase tracking-widest border-b border-gray-300 pb-0.5 mb-2">Resumo da Movimentação</h2>
+                            <div className="bg-gray-50 p-2.5 rounded-lg grid grid-cols-2 gap-2 mb-2">
+                                <div>
+                                    <p className="text-[8px] text-gray-500 uppercase font-black">Período do Acerto</p>
+                                    <p className="text-xs font-bold">{new Date(printingDespesa.dataInicio + 'T12:00:00').toLocaleDateString('pt-BR')} a {new Date(printingDespesa.dataFim + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[8px] text-gray-500 uppercase font-black">Total de Dias</p>
+                                    <p className="text-xs font-bold">{printingDespesa.diasDiaria} Diárias (R$ {printingDespesa.valorDiaria?.toLocaleString('pt-BR')})</p>
+                                </div>
+                            </div>
+                            
+                            {printingDespesa.viagensIds && printingDespesa.viagensIds.length > 0 && (
+                                <table className="w-full text-[9px] border-collapse mt-1">
+                                    <thead>
+                                        <tr className="bg-gray-100 border-y border-gray-300 text-left font-black uppercase text-[7px]">
+                                            <th className="py-1 px-2">Ciclo / Rota</th>
+                                            <th className="py-1 px-2">Cliente / Carga</th>
+                                            <th className="py-1 px-2 text-center">Data Saída</th>
+                                            <th className="py-1 px-2 text-center">Data Descarreg.</th>
+                                            <th className="py-1 px-2">Trajeto (Origem → Destino)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {cargas.filter(v => printingDespesa.viagensIds?.includes(v.id)).map(v => (
+                                            <React.Fragment key={v.id}>
+                                                {/* Header do Ciclo */}
+                                                <tr className="bg-gray-50/50">
+                                                    <td colSpan={5} className="py-1 px-2 font-black text-[8px] text-primary border-t border-gray-200">
+                                                        CICLO: {v.codigoViagem || 'V-N/A'} | SAI: {v.dataSaida ? new Date((v as any).dataSaida + 'T12:00:00').toLocaleDateString('pt-BR') : '---'}
+                                                    </td>
+                                                </tr>
+                                                {/* Rotas do Ciclo */}
+                                                {v.rotas && v.rotas.map((r: any, ri: number) => (
+                                                    <tr key={`${v.id}-${ri}`} className="border-b border-gray-50">
+                                                        <td className="py-1 px-2 font-bold text-[8px]">Rota {ri + 1}</td>
+                                                        <td className="py-1 px-2">
+                                                            <p className="font-bold text-[8px]">{r.cliente || '-'}</p>
+                                                            <p className="text-[7px] text-gray-500 italic">{r.peso ? `${r.peso}t` : ''}</p>
+                                                        </td>
+                                                        <td className="py-1 px-2 whitespace-nowrap text-center text-[8px]">
+                                                            {r.dataSaidaRota ? new Date(r.dataSaidaRota + 'T12:00:00').toLocaleDateString('pt-BR') : '---'}
+                                                        </td>
+                                                        <td className="py-1 px-2 whitespace-nowrap text-center text-[8px] font-bold">
+                                                            {r.dataDescarregamentoRota ? new Date(r.dataDescarregamentoRota + 'T12:00:00').toLocaleDateString('pt-BR') : (r.previsaoChegadaRota ? new Date(r.previsaoChegadaRota + 'T12:00:00').toLocaleDateString('pt-BR') : '---')}
+                                                        </td>
+                                                        <td className="py-1 px-2 uppercase text-[8px]">{r.origem} → {r.destino}</td>
+                                                    </tr>
+                                                ))}
+                                            </React.Fragment>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+
+                        {/* Tabela de Despesas */}
+                        <div className="mb-3">
+                            <h2 className="text-[8px] font-black uppercase tracking-widest border-b border-gray-300 pb-0.5 mb-2">Discriminação de Valores</h2>
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-black text-left font-black uppercase text-[10px]">
+                                        <th className="py-2">Descrição / Categoria</th>
+                                        <th className="py-2">Observação</th>
+                                        <th className="py-2 text-right">Valor Parcial</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                    <tr>
+                                        <td className="py-1.5 font-bold uppercase text-[10px]">Diárias ({printingDespesa.diasDiaria}x R$ {printingDespesa.valorDiaria?.toLocaleString('pt-BR')})</td>
+                                        <td className="py-1.5 text-gray-500 text-[9px]">Gastos de viagem</td>
+                                        <td className="py-1.5 text-right font-bold text-xs whitespace-nowrap">R$ {printingDespesa.totalDiarias?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                    </tr>
+                                    {printingDespesa.comissaoCombustivel > 0 && (
+                                        <tr>
+                                            <td className="py-1.5 font-bold uppercase text-[10px]">Comissão de Combustível</td>
+                                            <td className="py-1.5 text-gray-500 text-[9px]">Bonificação</td>
+                                            <td className="py-1.5 text-right font-bold text-xs whitespace-nowrap">R$ {printingDespesa.comissaoCombustivel?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                        </tr>
+                                    )}
+                                    {(() => {
+                                        const groupedItems = printingDespesa.items.reduce((acc: any, item: any) => {
+                                            if (!acc[item.categoria]) {
+                                                acc[item.categoria] = { valor: 0, descricoes: [] as string[] };
+                                            }
+                                            acc[item.categoria].valor += item.valor;
+                                            if (item.descricao) acc[item.categoria].descricoes.push(item.descricao);
+                                            return acc;
+                                        }, {});
+
+                                        return Object.entries(groupedItems).map(([cat, info]: [any, any], i) => (
+                                            <tr key={i}>
+                                                <td className="py-1.5 font-bold uppercase text-[10px]">
+                                                    <div className="flex flex-col">
+                                                        <span>{cat}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="py-1.5 text-gray-500 text-[8px] leading-tight max-w-[250px]">
+                                                    {info.descricoes.length > 0 ? info.descricoes.join(' | ') : 'Despesa de viagem'}
+                                                </td>
+                                                <td className="py-1.5 text-right font-bold text-xs whitespace-nowrap">R$ {info.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                            </tr>
+                                        ));
+                                    })()}
+                                </tbody>
+                                <tfoot className="no-break">
+                                    <tr className="border-t-2 border-black">
+                                        <td colSpan={2} className="py-2 font-black uppercase text-right text-[10px]">Subtotal de Despesas</td>
+                                        <td className="py-2 text-right font-black text-xs text-primary whitespace-nowrap">R$ {printingDespesa.valorTotal?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                    </tr>
+                                    {printingDespesa.depositos && printingDespesa.depositos.length > 0 ? (
+                                        <tr className="border-b border-gray-300">
+                                            <td colSpan={2} className="py-1.5 text-right leading-tight">
+                                                <div className="font-black uppercase text-[10px] text-blue-600 mb-0.5">(-) Total Adiantamentos</div>
+                                                <div className="text-[8px] text-gray-500">
+                                                    {printingDespesa.depositos.map((dep: any, idx: number) => {
+                                                        const tipoLabel = dep.tipo === 'adiantamento_inicial' ? 'Inicial' : dep.tipo === 'durante_viagem' ? 'Em Viagem' : 'Final';
+                                                        return (
+                                                            <span key={idx}>
+                                                                <span className="font-bold">{tipoLabel}</span>: R$ {(dep.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                                {idx < (printingDespesa.depositos?.length || 0) - 1 ? ' • ' : ''}
+                                                            </span>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </td>
+                                            <td className="py-1.5 text-right font-black text-[10px] text-blue-600 whitespace-nowrap align-top">
+                                                R$ {(printingDespesa.depositos || []).reduce((s: number, d: any) => s + (d.valor || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        <tr className="border-b border-gray-300">
+                                            <td colSpan={2} className="py-1.5 font-bold uppercase text-right text-[10px] text-blue-600">(-) Adiantamento de Viagem</td>
+                                            <td className="py-1.5 text-right font-bold text-[10px] text-blue-600 whitespace-nowrap">R$ {printingDespesa.adiantamento?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                        </tr>
+                                    )}
+                                    <tr className="bg-gray-100">
+                                        <td colSpan={2} className="py-2 px-4 font-black uppercase text-right text-sm">
+                                            {printingDespesa.saldoFinal > 0 ? 'Saldo Devedor / Próxima Viagem' : 'Saldo a Receber'}
+                                        </td>
+                                        <td className={`py-2 px-4 text-right font-black text-lg whitespace-nowrap ${printingDespesa.saldoFinal > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
+                                            R$ {Math.abs(printingDespesa.saldoFinal).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+
+                        {/* Assinaturas */}
+                        <div className="mt-4 grid grid-cols-2 gap-10 no-break">
+                            <div className="flex flex-col items-center">
+                                <div className="w-full border-t-[1.5px] border-black mb-1"></div>
+                                <p className="text-[8px] font-black uppercase tracking-widest text-center">Assinatura de Responsável</p>
+                                <p className="text-[7px] text-gray-400 uppercase">EMPRESA / GESTOR DE FROTA</p>
+                            </div>
+                            <div className="flex flex-col items-center">
+                                <div className="w-full border-t-[1.5px] border-black mb-1"></div>
+                                <p className="text-[8px] font-black uppercase tracking-widest text-center">Assinatura do Motorista</p>
+                                <p className="text-[8px] font-bold text-center leading-none uppercase">{printingDespesa.motoristaNome}</p>
+                                <p className="text-[7px] text-gray-400">CPF: {printingDespesa.motoristaCPF || '---.---.------'}</p>
+                            </div>
+                        </div>
+
+                        {/* Botões de Ação (não aparecem no print) */}
+                        <div className="mt-12 flex justify-end gap-3 print:hidden">
+                            <button
+                                onClick={() => setPrintingDespesa(null)}
+                                className="px-6 py-3 border border-gray-300 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors"
+                            >
+                                Fechar Visualização
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const originalTitle = document.title;
+                                    const inicioStr = new Date(printingDespesa.dataInicio + 'T12:00:00').toLocaleDateString('pt-BR').replace(/\//g, '-');
+                                    const fimStr = new Date(printingDespesa.dataFim + 'T12:00:00').toLocaleDateString('pt-BR').replace(/\//g, '-');
+                                    document.title = `${printingDespesa.id.slice(0, 8).toUpperCase()} - ${printingDespesa.motoristaNome} - ${inicioStr} a ${fimStr}`;
+                                    window.print();
+                                    setTimeout(() => { document.title = originalTitle; }, 1000);
+                                }}
+                                className="px-8 py-3 bg-primary text-black rounded-xl text-sm font-black uppercase tracking-widest shadow-xl hover:scale-105 transition-all"
+                            >
+                                Imprimir / Salvar PDF
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

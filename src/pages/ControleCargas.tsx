@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, where, getDocs } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../lib/firebase';
 import { useReactToPrint } from 'react-to-print';
 import { BadgeDollarSign } from 'lucide-react';
 
@@ -201,6 +202,8 @@ export default function ControleCargas() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [expandedRotas, setExpandedRotas] = useState<Record<number, boolean>>({});
+    const [uploadingFiles, setUploadingFiles] = useState<{[key: string]: boolean}>({});
+    const [viewerData, setViewerData] = useState<{url: string, rotaIndex: number, imageIndex: number, isPdf: boolean} | null>(null);
     const [formData, setFormData] = useState<{
         codigoViagem: string;
         dataSaida: string;
@@ -400,7 +403,7 @@ export default function ControleCargas() {
         setIsFormOpen(true);
     };
 
-    const handleEdit = (v: Viagem) => {
+    const handleEdit = async (v: Viagem) => {
         setEditingId(v.id);
         
         let rotas: Rota[] = v.rotas || [];
@@ -427,6 +430,8 @@ export default function ControleCargas() {
             }];
         }
 
+        const initialRotas = rotas.map(r => ({ ...r, status: r.status || 'Indo para o cliente' }));
+
         setFormData({
             codigoViagem: v.codigoViagem || '',
             dataSaida: v.dataSaida || '',
@@ -435,7 +440,7 @@ export default function ControleCargas() {
             motoristaNome: v.motoristaNome || '',
             placaCavalo: v.placaCavalo || '',
             placaBau: v.placaBau || '',
-            rotas: rotas.map(r => ({ ...r, status: r.status || 'Indo para o cliente' })),
+            rotas: initialRotas,
             status: v.status || 'Em planejamento',
             linkComprovante: v.linkComprovante || '',
             litrosAbastecidos: v.litrosAbastecidos || 0,
@@ -443,6 +448,42 @@ export default function ControleCargas() {
             valorTotalCombustivel: v.valorTotalCombustivel || 0
         });
         setIsFormOpen(true);
+
+        // Sincronizar comprovantes enviados pelo app de motorista que podem não estar refletidos
+        try {
+            const q = query(collection(db, 'despesas_frota'), where('viagensIds', 'array-contains', v.id));
+            const snap = await getDocs(q);
+            if (!snap.empty) {
+                let updated = false;
+                const newRotas = [...initialRotas];
+                snap.docs.forEach(docSnap => {
+                    const data = docSnap.data();
+                    if (data.rotaAnexos) {
+                        Object.keys(data.rotaAnexos).forEach(key => {
+                            const [cId, ri] = key.split('_');
+                            if (cId === v.id) {
+                                const index = parseInt(ri);
+                                if (newRotas[index]) {
+                                    const existentes = newRotas[index].anexosEntregas || [];
+                                    const novos = data.rotaAnexos[key] || [];
+                                    const merged = Array.from(new Set([...existentes, ...novos]));
+                                    if (merged.length > existentes.length) {
+                                        newRotas[index].anexosEntregas = merged;
+                                        updated = true;
+                                    }
+                                }
+                            }
+                        });
+                    }
+                });
+
+                if (updated) {
+                    setFormData(prev => ({ ...prev, rotas: newRotas }));
+                }
+            }
+        } catch (err) {
+            console.error('Erro ao sincronizar comprovantes da prestação de contas:', err);
+        }
     };
 
     const handleDelete = async (id: string, e: React.MouseEvent) => {
@@ -624,6 +665,30 @@ export default function ControleCargas() {
         const rotasCombustivel = curr.rotas?.reduce((sum: number, r: any) => sum + ((r.litrosAbastecidos || 0) * (r.valorLitroCombustivel || 0)), 0) || 0;
         return acc + rotasCombustivel;
     }, 0);
+
+    const handleFirebaseUpload = async (file: File, path: string): Promise<string> => {
+        const fileRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
+        const uploadTask = await uploadBytesResumable(fileRef, file);
+        return await getDownloadURL(uploadTask.ref);
+    };
+
+    const handleUploadRotaAnexo = async (rotaIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+        
+        const key = `${rotaIndex}`;
+        setUploadingFiles(prev => ({...prev, [key]: true}));
+        
+        try {
+            const urls = await Promise.all(files.map(f => handleFirebaseUpload(f, 'comprovantes')));
+            updateRota(rotaIndex, 'anexosEntregas', [...(formData.rotas[rotaIndex].anexosEntregas || []), ...urls]);
+        } catch (err) {
+            console.error(err);
+            alert('Erro ao enviar imagens');
+        } finally {
+            setUploadingFiles(prev => ({...prev, [key]: false}));
+        }
+    };
 
     const updateRota = (index: number, field: string, value: any) => {
         const newRotas = [...formData.rotas];
@@ -1289,23 +1354,44 @@ export default function ControleCargas() {
                                                  )}
                                              </div>
 
-                                        {rota.anexosEntregas && rota.anexosEntregas.length > 0 && (
-                                            <div className="grid grid-cols-1 gap-2 border border-primary/20 bg-primary/5 p-4 rounded-xl mt-4">
-                                                <div className="flex items-center gap-2 mb-2 border-b border-primary/20 pb-2">
+                                        <div className="grid grid-cols-1 gap-2 border border-primary/20 bg-primary/5 p-4 rounded-xl mt-4">
+                                            <div className="flex items-center justify-between border-b border-primary/20 pb-2">
+                                                <div className="flex items-center gap-2">
                                                     <span className="material-symbols-outlined text-[16px] text-primary">image</span>
                                                     <span className="text-[10px] font-black uppercase text-primary tracking-widest">Comprovantes de Entrega / Despesas</span>
                                                 </div>
-                                                <div className="flex gap-4 overflow-x-auto custom-scrollbar pb-2">
+                                                {formData.status !== 'Finalizado' && (
+                                                    <label className="flex items-center gap-2 text-primary cursor-pointer hover:underline text-[10px] font-black uppercase">
+                                                        {uploadingFiles[`${index}`] ? (
+                                                            <span className="material-symbols-outlined text-sm animate-spin">sync</span>
+                                                        ) : (
+                                                            <>
+                                                                <span className="material-symbols-outlined text-sm">add_a_photo</span> Adicionar
+                                                            </>
+                                                        )}
+                                                        <input 
+                                                            type="file" 
+                                                            multiple 
+                                                            accept="image/*,application/pdf" 
+                                                            className="hidden" 
+                                                            disabled={uploadingFiles[`${index}`]}
+                                                            onChange={(e) => handleUploadRotaAnexo(index, e)} 
+                                                        />
+                                                    </label>
+                                                )}
+                                            </div>
+                                            {rota.anexosEntregas && rota.anexosEntregas.length > 0 ? (
+                                                <div className="flex gap-4 overflow-x-auto custom-scrollbar pt-2 pb-2">
                                                     {rota.anexosEntregas.map((url: string, i: number) => (
                                                         <div key={i} className="relative shrink-0 group">
                                                             {url.includes('.pdf') || url.includes('token') === false /* basic check */ ? (
-                                                                <a href={url} target="_blank" rel="noreferrer" className="w-24 h-24 bg-surface border border-primary/30 rounded-xl flex items-center justify-center hover:bg-primary/10 transition-colors block">
+                                                                <button type="button" onClick={() => { setViewerData({ url, rotaIndex: index, imageIndex: i, isPdf: true }); }} className="w-24 h-24 bg-surface border border-primary/30 rounded-xl flex items-center justify-center hover:bg-primary/10 transition-colors block">
                                                                     <span className="material-symbols-outlined text-red-500 text-3xl">picture_as_pdf</span>
-                                                                </a>
+                                                                </button>
                                                             ) : (
-                                                                <a href={url} target="_blank" rel="noreferrer">
+                                                                <button type="button" onClick={() => { setViewerData({ url, rotaIndex: index, imageIndex: i, isPdf: false }); }} className="block">
                                                                     <img src={url} alt={`Comprovante ${i+1}`} className="w-24 h-24 object-cover rounded-xl border border-primary/30 hover:opacity-80 transition-opacity" />
-                                                                </a>
+                                                                </button>
                                                             )}
                                                             {formData.status !== 'Finalizado' && (
                                                                 <button 
@@ -1323,8 +1409,12 @@ export default function ControleCargas() {
                                                         </div>
                                                     ))}
                                                 </div>
-                                            </div>
-                                        )}
+                                            ) : (
+                                                <div className="text-center p-4">
+                                                    <span className="text-[10px] text-primary/60 font-black uppercase tracking-widest italic">Nenhum comprovante anexado</span>
+                                                </div>
+                                            )}
+                                        </div>
                                         </div>
                                         )}
                                     </div>
@@ -1520,6 +1610,40 @@ export default function ControleCargas() {
                 </div>
             )}
 
+            {viewerData && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
+                    <div className="relative w-full max-w-5xl h-full max-h-[90vh] flex flex-col items-center justify-center gap-4">
+                        <div className="absolute top-4 right-4 flex gap-4 z-[210]">
+                            <a href={viewerData.url} target="_blank" rel="noreferrer" download className="bg-blue-500 text-white p-3 rounded-full hover:bg-blue-600 transition-colors shadow-lg flex items-center gap-2 font-black uppercase text-xs">
+                                <span className="material-symbols-outlined">download</span>
+                                <span className="hidden md:inline">Baixar</span>
+                            </a>
+                            {formData.status !== 'Finalizado' && (
+                                <button 
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        const updatedAnexos = (formData.rotas[viewerData.rotaIndex].anexosEntregas || []).filter((_: any, idx: number) => idx !== viewerData.imageIndex);
+                                        updateRota(viewerData.rotaIndex, 'anexosEntregas', updatedAnexos);
+                                        setViewerData(null);
+                                    }} 
+                                    className="bg-red-500 text-white p-3 rounded-full hover:bg-red-600 transition-colors shadow-lg flex items-center gap-2 font-black uppercase text-xs"
+                                >
+                                    <span className="material-symbols-outlined">delete</span>
+                                    <span className="hidden md:inline">Deletar</span>
+                                </button>
+                            )}
+                            <button onClick={() => setViewerData(null)} className="bg-white/20 text-white p-3 rounded-full hover:bg-white/30 transition-colors shadow-lg flex items-center">
+                                <span className="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+                        {viewerData.isPdf ? (
+                            <iframe src={viewerData.url} className="w-full h-full rounded-2xl bg-white" title="PDF Viewer" />
+                        ) : (
+                            <img src={viewerData.url} className="max-w-full max-h-full object-contain rounded-2xl" alt="Visualização" />
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

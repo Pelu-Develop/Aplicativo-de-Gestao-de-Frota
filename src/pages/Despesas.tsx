@@ -1514,7 +1514,14 @@ export default function Despesas() {
                                 Fechar Visualização
                             </button>
                             <button
-                                onClick={() => window.print()}
+                                onClick={() => {
+                                    const originalTitle = document.title;
+                                    const inicioStr = new Date(printingDespesa.dataInicio + 'T12:00:00').toLocaleDateString('pt-BR').replace(/\//g, '-');
+                                    const fimStr = new Date(printingDespesa.dataFim + 'T12:00:00').toLocaleDateString('pt-BR').replace(/\//g, '-');
+                                    document.title = `${printingDespesa.id.slice(0, 8).toUpperCase()} - ${printingDespesa.motoristaNome} - ${inicioStr} a ${fimStr}`;
+                                    window.print();
+                                    setTimeout(() => { document.title = originalTitle; }, 1000);
+                                }}
                                 className="px-8 py-3 bg-primary text-black rounded-xl text-sm font-black uppercase tracking-widest shadow-xl hover:scale-105 transition-all"
                             >
                                 Imprimir Agora
